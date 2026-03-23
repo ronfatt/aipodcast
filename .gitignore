@@ -1,0 +1,13 @@
+.next
+node_modules
+.env
+.env.local
+dist
+coverage
+*.log
+tsconfig.tsbuildinfo
+.DS_Store
+.tmp-audio
+.tmp-export
+public/generated-audio/*.mp3
+public/generated-packages/*.zip
