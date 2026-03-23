@@ -39,7 +39,13 @@ function containsQuery(episode: Episode, query: string) {
   return haystack.includes(query.toLowerCase());
 }
 
-export function DashboardWorkspace({ episodes }: { episodes: Episode[] }) {
+export function DashboardWorkspace({
+  episodes,
+  createdCount = 0,
+}: {
+  episodes: Episode[];
+  createdCount?: number;
+}) {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<EpisodeStatus | "all">("all");
   const [mode, setMode] = useState<"all" | "openai" | "fallback">("all");
@@ -77,6 +83,12 @@ export function DashboardWorkspace({ episodes }: { episodes: Episode[] }) {
 
   return (
     <>
+      {createdCount > 0 ? (
+        <section className="rounded-[1.75rem] border border-teal/18 bg-teal/8 px-5 py-4 text-sm text-teal">
+          Batch generation completed. {createdCount} new episode{createdCount > 1 ? "s" : ""} added to the queue.
+        </section>
+      ) : null}
+
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {metrics.map((metric) => (
           <div key={metric.label} className="panel rounded-[1.75rem] p-5">

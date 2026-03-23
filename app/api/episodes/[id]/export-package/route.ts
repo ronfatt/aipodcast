@@ -1,5 +1,6 @@
 import path from "node:path";
 import { mkdir, writeFile } from "node:fs/promises";
+import os from "node:os";
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth-server";
 import { renderEpisodeAudio } from "@/lib/audio-renderer";
@@ -18,9 +19,10 @@ async function resolveAudioFilePath(audioUrl: string, episodeId: string) {
   }
 
   const arrayBuffer = await response.arrayBuffer();
-  const tempDir = path.join(process.cwd(), ".tmp-export", "downloads");
+  const tempDir = path.join(os.tmpdir(), "aipodcast-export-downloads");
   await mkdir(tempDir, { recursive: true });
-  const tempFilePath = path.join(tempDir, `${episodeId}.mp3`);
+  const extension = path.extname(new URL(audioUrl).pathname) || ".mp3";
+  const tempFilePath = path.join(tempDir, `${episodeId}${extension}`);
   await writeFile(tempFilePath, Buffer.from(arrayBuffer));
 
   return tempFilePath;

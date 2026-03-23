@@ -2,7 +2,13 @@ import { sampleEpisodes, voiceProfiles } from "@/lib/mock-data";
 import { generateEpisodeFromInput } from "@/lib/script-generator";
 import { hasSupabaseConfig, getSupabaseAdminClient } from "@/lib/supabase";
 import { deleteStorageObjectFromUrl } from "@/lib/storage";
-import { CreateEpisodeInput, Episode, UpdateEpisodeInput } from "@/lib/types";
+import {
+  CreateEpisodeInput,
+  Episode,
+  EpisodeGenerationMemory,
+  HostEpisodeMemory,
+  UpdateEpisodeInput,
+} from "@/lib/types";
 
 type EpisodeRow = {
   id: string;
@@ -90,6 +96,40 @@ function mapRowToEpisode(row: EpisodeRow): Episode {
 
 function buildUpdatedTimestamp() {
   return new Date().toISOString();
+}
+
+function normalizeEpisodeSummary(summary: string) {
+  return summary.replace(/\s+/g, " ").trim();
+}
+
+function buildHostMemoryEntries(episodes: Episode[], hostId: string): HostEpisodeMemory[] {
+  return episodes
+    .filter((episode) => episode.hostA.id === hostId || episode.hostB.id === hostId)
+    .slice(0, 3)
+    .map((episode) => {
+      const matchingSpeaker = episode.hostA.id === hostId ? "A" : "B";
+      const sampleLines = episode.script
+        .filter((turn) => turn.speaker === matchingSpeaker)
+        .slice(0, 2)
+        .map((turn) => turn.text.trim());
+
+      return {
+        title: episode.title,
+        summary: normalizeEpisodeSummary(episode.summary),
+        sampleLines,
+      };
+    });
+}
+
+function buildEpisodeGenerationMemory(
+  recentEpisodes: Episode[],
+  hostAId: string,
+  hostBId: string,
+): EpisodeGenerationMemory {
+  return {
+    hostA: buildHostMemoryEntries(recentEpisodes, hostAId),
+    hostB: buildHostMemoryEntries(recentEpisodes, hostBId),
+  };
 }
 
 async function listEpisodesFromSupabase(userId: string) {
@@ -209,7 +249,9 @@ export async function getEpisodeById(id: string, userId?: string) {
 export async function createEpisode(input: CreateEpisodeInput, userId?: string) {
   const hostA = voiceProfiles.find((voice) => voice.id === input.hostAId) ?? voiceProfiles[0];
   const hostB = voiceProfiles.find((voice) => voice.id === input.hostBId) ?? voiceProfiles[1];
-  const episode = await generateEpisodeFromInput(input, hostA, hostB);
+  const recentEpisodes = (await listEpisodes(userId)).slice(0, 12);
+  const generationMemory = buildEpisodeGenerationMemory(recentEpisodes, hostA.id, hostB.id);
+  const episode = await generateEpisodeFromInput(input, hostA, hostB, generationMemory);
   const nextEpisode = {
     ...episode,
     userId,

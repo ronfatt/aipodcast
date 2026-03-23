@@ -50,7 +50,8 @@ export async function createEpisodeExportPackage(episode: Episode, audioFilePath
   const workingDir = path.join(scratchRoot, slug);
   const zipFilePath = path.join(packageDir, `${slug}.zip`);
   const publicUrl = `/generated-packages/${slug}.zip`;
-  const audioTarget = path.join(workingDir, `${slug}.mp3`);
+  const audioExtension = path.extname(audioFilePath) || ".mp3";
+  const audioTarget = path.join(workingDir, `${slug}${audioExtension}`);
 
   await ensureLocalDir(packageDir);
   await rm(workingDir, { recursive: true, force: true });

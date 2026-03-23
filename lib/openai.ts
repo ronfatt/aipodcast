@@ -23,3 +23,7 @@ export function getOpenAIClient() {
 export function getScriptModel() {
   return process.env.OPENAI_SCRIPT_MODEL || "gpt-5.2";
 }
+
+export function getTtsModel() {
+  return process.env.OPENAI_TTS_MODEL || "gpt-4o-mini-tts";
+}

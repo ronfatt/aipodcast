@@ -43,8 +43,8 @@ export function AudioRenderPanel({
     <div className="mt-6 rounded-[1.5rem] border border-ink/8 bg-white/70 p-4">
       <p className="text-sm font-semibold text-ink">Audio export</p>
       <p className="mt-2 text-sm leading-6 text-ink/68">
-        Render this script with local system voices first. Later we can swap this layer to an
-        external TTS provider without changing the page flow.
+        Render this script into podcast audio. On deployed environments the app now uses OpenAI TTS;
+        on local macOS it can still fall back to system voices.
       </p>
 
       {localAudioUrl ? (
@@ -57,7 +57,7 @@ export function AudioRenderPanel({
             download
             className="inline-flex rounded-full border border-ink/10 bg-ink px-4 py-2 text-sm font-medium text-parchment"
           >
-            Download mp3
+            Download audio
           </a>
         </div>
       ) : null}

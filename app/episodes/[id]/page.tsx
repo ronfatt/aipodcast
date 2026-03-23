@@ -7,6 +7,7 @@ import { ExportPackagePanel } from "@/components/export-package-panel";
 import { ScriptPreview } from "@/components/script-preview";
 import { requireUser } from "@/lib/auth-server";
 import { getEpisodeById } from "@/lib/episode-store";
+import { inferPersonaMode, personaModeLabel, roleLabel } from "@/lib/personas";
 
 export default async function EpisodeDetailPage({
   params,
@@ -20,6 +21,8 @@ export default async function EpisodeDetailPage({
   if (!episode) {
     notFound();
   }
+
+  const personaMode = inferPersonaMode(episode.hostA, episode.hostB);
 
   return (
     <AppShell title={episode.title} kicker="Script Editor">
@@ -46,6 +49,10 @@ export default async function EpisodeDetailPage({
             <div>
               <dt className="text-ink/45">Template</dt>
               <dd className="mt-1 text-base text-ink">{episode.template}</dd>
+            </div>
+            <div>
+              <dt className="text-ink/45">Persona mode</dt>
+              <dd className="mt-1 text-base text-ink">{personaModeLabel(personaMode)}</dd>
             </div>
             <div>
               <dt className="text-ink/45">Generation mode</dt>
@@ -101,10 +108,21 @@ export default async function EpisodeDetailPage({
                 <p className="text-xs uppercase tracking-[0.25em] text-ink/45">{item.label}</p>
                 <p className="mt-2 text-lg font-semibold text-ink">{item.voice.name}</p>
                 <p className="text-sm text-ink/70">{item.voice.persona}</p>
+                <p className="mt-1 text-xs uppercase tracking-[0.2em] text-teal">
+                  {roleLabel(item.voice.role)}
+                </p>
                 <p className="mt-1 text-xs uppercase tracking-[0.2em] text-ink/45">
                   macOS voice: {item.voice.systemVoice}
                 </p>
                 <p className="mt-3 text-sm leading-6 text-ink/68">“{item.voice.sampleLine}”</p>
+                <div className="mt-4 space-y-2 text-sm text-ink/62">
+                  <p>
+                    <span className="font-semibold text-ink">Bias:</span> {item.voice.worldviewBiases[0]}
+                  </p>
+                  <p>
+                    <span className="font-semibold text-ink">Angle:</span> {item.voice.recurringAngles[0]}
+                  </p>
+                </div>
               </div>
             ))}
           </div>

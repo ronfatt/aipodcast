@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { inferPersonaMode, personaModeLabel } from "@/lib/personas";
 import { Episode } from "@/lib/types";
 
 const statusLabel: Record<Episode["status"], string> = {
@@ -10,6 +11,7 @@ const statusLabel: Record<Episode["status"], string> = {
 
 export function EpisodeCard({ episode }: { episode: Episode }) {
   const generationMode = episode.generationMode ?? "fallback";
+  const personaMode = inferPersonaMode(episode.hostA, episode.hostB);
 
   return (
     <article className="panel rounded-[1.75rem] p-5">
@@ -26,6 +28,7 @@ export function EpisodeCard({ episode }: { episode: Episode }) {
       <div className="mt-5 flex flex-wrap items-center gap-3 text-sm text-ink/60">
         <span>{episode.durationLabel}</span>
         <span>{generationMode}</span>
+        <span>{personaModeLabel(personaMode)}</span>
         <span>{episode.template}</span>
         <span>{episode.hostA.name}</span>
         <span>{episode.hostB.name}</span>

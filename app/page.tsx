@@ -3,6 +3,7 @@ import { AppShell } from "@/components/app-shell";
 import { getCurrentUser } from "@/lib/auth-server";
 import { listEpisodes } from "@/lib/episode-store";
 import { sampleEpisodes, voiceProfiles } from "@/lib/mock-data";
+import { roleLabel } from "@/lib/personas";
 
 const valueProps = [
   "从主题一句话生成双人播客脚本",
@@ -52,9 +53,10 @@ export default async function HomePage() {
                     <p className="text-sm text-ink/60">{voice.persona}</p>
                   </div>
                   <span className="rounded-full bg-gold/20 px-3 py-1 text-xs uppercase tracking-[0.2em] text-ink/70">
-                    {voice.style}
+                    {roleLabel(voice.role)}
                   </span>
                 </div>
+                <p className="mt-2 text-xs uppercase tracking-[0.2em] text-ink/45">{voice.style}</p>
                 <p className="mt-3 text-sm leading-6 text-ink/74">“{voice.sampleLine}”</p>
               </div>
             ))}

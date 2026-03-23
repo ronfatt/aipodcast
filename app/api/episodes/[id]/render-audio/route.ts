@@ -28,9 +28,11 @@ export async function POST(
       audioUrl: updated?.audioUrl ?? result.audioUrl,
     });
   } catch (error) {
+    const message = error instanceof Error ? error.message : "Audio rendering failed.";
+
     return NextResponse.json(
       {
-        error: error instanceof Error ? error.message : "Audio rendering failed.",
+        error: message,
       },
       { status: 500 },
     );
