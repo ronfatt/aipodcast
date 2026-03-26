@@ -6,6 +6,7 @@ import { getCurrentUser } from "@/lib/auth-server";
 import { renderEpisodeAudio } from "@/lib/audio-renderer";
 import { getEpisodeById, updateEpisodeAudio, updateEpisodeExportPackage } from "@/lib/episode-store";
 import { createEpisodeExportPackage } from "@/lib/export-package";
+import { getShowById, listShows } from "@/lib/show-store";
 
 async function resolveAudioFilePath(audioUrl: string, episodeId: string) {
   if (audioUrl.startsWith("/")) {
@@ -46,11 +47,14 @@ export async function POST(
   }
 
   try {
+    const show =
+      (episode.showId ? await getShowById(episode.showId, user?.id) : undefined) ||
+      (await listShows(user?.id)).find((item) => item.name === episode.showName);
     let audioUrl = episode.audioUrl;
     let audioFilePath = audioUrl ? await resolveAudioFilePath(audioUrl, id) : "";
 
     if (!audioUrl) {
-      const rendered = await renderEpisodeAudio(episode);
+      const rendered = await renderEpisodeAudio(episode, show);
       audioUrl = rendered.audioUrl;
       audioFilePath = rendered.outputFile;
       await updateEpisodeAudio(id, rendered.audioUrl, user?.id);
@@ -62,6 +66,7 @@ export async function POST(
         audioUrl,
       },
       audioFilePath,
+      show,
     );
 
     const updated = await updateEpisodeExportPackage(id, result.packageUrl, user?.id);

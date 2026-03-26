@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth-server";
 import { renderEpisodeAudio } from "@/lib/audio-renderer";
 import { getEpisodeById, updateEpisodeAudio } from "@/lib/episode-store";
+import { getShowById, listShows } from "@/lib/show-store";
 
 export async function POST(
   _request: Request,
@@ -21,7 +22,10 @@ export async function POST(
   }
 
   try {
-    const result = await renderEpisodeAudio(episode);
+    const show =
+      (episode.showId ? await getShowById(episode.showId, user?.id) : undefined) ||
+      (await listShows(user?.id)).find((item) => item.name === episode.showName);
+    const result = await renderEpisodeAudio(episode, show);
     const updated = await updateEpisodeAudio(id, result.audioUrl, user?.id);
 
     return NextResponse.json({

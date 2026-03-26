@@ -4,11 +4,24 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 import { voiceProfiles } from "@/lib/mock-data";
 import { conflictLevelLabel, personaModeLabel, personaModePresets, roleLabel } from "@/lib/personas";
+import { Show } from "@/lib/types";
 import { podcastTemplates } from "@/lib/templates";
 
-export function NewEpisodeForm() {
+export function NewEpisodeForm({ shows }: { shows: Show[] }) {
   const router = useRouter();
-  const [showName, setShowName] = useState("Future Banter");
+  const initialShow = shows[0];
+  const [showId, setShowId] = useState<string | undefined>(initialShow?.id);
+  const [showName, setShowName] = useState(initialShow?.name || "Future Banter");
+  const [showProfileId, setShowProfileId] = useState(initialShow?.id || "custom-show");
+  const [showTagline, setShowTagline] = useState(initialShow?.tagline || "");
+  const [showCoverImageUrl, setShowCoverImageUrl] = useState(initialShow?.coverImageUrl || "");
+  const [targetAudience, setTargetAudience] = useState(initialShow?.audience || "");
+  const [showFormat, setShowFormat] = useState(initialShow?.format || "");
+  const [introStyle, setIntroStyle] = useState(initialShow?.introStyle || "");
+  const [outroStyle, setOutroStyle] = useState(initialShow?.outroStyle || "");
+  const [defaultIntro, setDefaultIntro] = useState(initialShow?.defaultIntro || "");
+  const [defaultOutro, setDefaultOutro] = useState(initialShow?.defaultOutro || "");
+  const [defaultDescription, setDefaultDescription] = useState(initialShow?.defaultDescription || "");
   const [topic, setTopic] = useState("为什么 AI 双人播客比单人播报更容易留住听众？");
   const [batchTopics, setBatchTopics] = useState("");
   const [sourceNotes, setSourceNotes] = useState(
@@ -46,7 +59,18 @@ export function NewEpisodeForm() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          showId,
           showName,
+          showProfileId,
+          showTagline,
+          showCoverImageUrl,
+          targetAudience,
+          showFormat,
+          introStyle,
+          outroStyle,
+          defaultIntro,
+          defaultOutro,
+          defaultDescription,
           topic,
           sourceNotes,
           template,
@@ -133,7 +157,19 @@ export function NewEpisodeForm() {
             Show name
             <input
               value={showName}
-              onChange={(event) => setShowName(event.target.value)}
+              onChange={(event) => {
+                setShowName(event.target.value);
+                setShowId(undefined);
+                setShowProfileId("custom-show");
+              }}
+              className="rounded-[1.1rem] border border-ink/10 bg-white/80 px-4 py-3 text-ink outline-none"
+            />
+          </label>
+          <label className="grid gap-2 text-sm text-ink/70">
+            Show tagline
+            <input
+              value={showTagline}
+              onChange={(event) => setShowTagline(event.target.value)}
               className="rounded-[1.1rem] border border-ink/10 bg-white/80 px-4 py-3 text-ink outline-none"
             />
           </label>
@@ -175,6 +211,150 @@ export function NewEpisodeForm() {
       </div>
 
       <div className="space-y-6">
+        <div className="panel rounded-[2rem] p-8">
+          <h2 className="font-display text-3xl text-ink">Show Identity</h2>
+          <div className="mt-5 space-y-4">
+            {shows.map((profile) => (
+              <label
+                key={profile.id}
+                className="flex cursor-pointer gap-4 rounded-[1.5rem] border border-ink/8 bg-white/75 p-4"
+              >
+                <input
+                  type="radio"
+                  name="showProfile"
+                  value={profile.id}
+                  checked={showProfileId === profile.id}
+                  onChange={() => {
+                    setShowId(profile.id);
+                    setShowProfileId(profile.id);
+                    setShowName(profile.name);
+                    setShowTagline(profile.tagline);
+                    setShowCoverImageUrl(profile.coverImageUrl || "");
+                    setTargetAudience(profile.audience);
+                    setShowFormat(profile.format);
+                    setIntroStyle(profile.introStyle);
+                    setOutroStyle(profile.outroStyle);
+                    setDefaultIntro(profile.defaultIntro || "");
+                    setDefaultOutro(profile.defaultOutro || "");
+                    setDefaultDescription(profile.defaultDescription || "");
+                    setTemplate(profile.template);
+                    setPersonaMode(profile.personaMode);
+                    setConflictLevel(profile.conflictLevel);
+                    setHostAId(profile.hostAId);
+                    setHostBId(profile.hostBId);
+                  }}
+                  className="mt-1"
+                />
+                <div>
+                  <p className="font-semibold text-ink">{profile.name}</p>
+                  <p className="mt-1 text-sm leading-6 text-ink/68">{profile.tagline}</p>
+                  {profile.defaultDescription ? (
+                    <p className="mt-2 text-sm leading-6 text-ink/58">{profile.defaultDescription}</p>
+                  ) : null}
+                  <p className="mt-2 text-xs uppercase tracking-[0.2em] text-ink/45">
+                    {profile.category} · {profile.publishingCadence}
+                  </p>
+                </div>
+              </label>
+            ))}
+          </div>
+          {showCoverImageUrl ? (
+            <div
+              className="mt-5 h-40 rounded-[1.5rem] border border-ink/8 bg-cover bg-center"
+              style={{
+                backgroundImage: `linear-gradient(rgba(19,20,18,0.14), rgba(19,20,18,0.14)), url(${showCoverImageUrl})`,
+              }}
+            />
+          ) : null}
+          <div className="mt-5 grid gap-4">
+            <label className="grid gap-2 text-sm text-ink/70">
+              Target audience
+              <input
+                value={targetAudience}
+                onChange={(event) => {
+                  setTargetAudience(event.target.value);
+                  setShowProfileId("custom-show");
+                }}
+                className="rounded-[1.1rem] border border-ink/10 bg-white/80 px-4 py-3 text-ink outline-none"
+              />
+            </label>
+            <label className="grid gap-2 text-sm text-ink/70">
+              Show format
+              <input
+                value={showFormat}
+                onChange={(event) => {
+                  setShowFormat(event.target.value);
+                  setShowProfileId("custom-show");
+                }}
+                className="rounded-[1.1rem] border border-ink/10 bg-white/80 px-4 py-3 text-ink outline-none"
+              />
+            </label>
+            <label className="grid gap-2 text-sm text-ink/70">
+              Intro style
+              <textarea
+                rows={3}
+                value={introStyle}
+                onChange={(event) => {
+                  setIntroStyle(event.target.value);
+                  setShowProfileId("custom-show");
+                }}
+                className="rounded-[1.2rem] border border-ink/10 bg-white/80 px-4 py-3 text-ink outline-none"
+              />
+            </label>
+            <label className="grid gap-2 text-sm text-ink/70">
+              Outro style
+              <textarea
+                rows={3}
+                value={outroStyle}
+                onChange={(event) => {
+                  setOutroStyle(event.target.value);
+                  setShowProfileId("custom-show");
+                }}
+                className="rounded-[1.2rem] border border-ink/10 bg-white/80 px-4 py-3 text-ink outline-none"
+              />
+            </label>
+            <label className="grid gap-2 text-sm text-ink/70">
+              Default spoken intro
+              <textarea
+                rows={3}
+                value={defaultIntro}
+                onChange={(event) => {
+                  setDefaultIntro(event.target.value);
+                  setShowId(undefined);
+                  setShowProfileId("custom-show");
+                }}
+                className="rounded-[1.2rem] border border-ink/10 bg-white/80 px-4 py-3 text-ink outline-none"
+              />
+            </label>
+            <label className="grid gap-2 text-sm text-ink/70">
+              Default spoken outro
+              <textarea
+                rows={3}
+                value={defaultOutro}
+                onChange={(event) => {
+                  setDefaultOutro(event.target.value);
+                  setShowId(undefined);
+                  setShowProfileId("custom-show");
+                }}
+                className="rounded-[1.2rem] border border-ink/10 bg-white/80 px-4 py-3 text-ink outline-none"
+              />
+            </label>
+            <label className="grid gap-2 text-sm text-ink/70">
+              Default show description
+              <textarea
+                rows={4}
+                value={defaultDescription}
+                onChange={(event) => {
+                  setDefaultDescription(event.target.value);
+                  setShowId(undefined);
+                  setShowProfileId("custom-show");
+                }}
+                className="rounded-[1.2rem] border border-ink/10 bg-white/80 px-4 py-3 text-ink outline-none"
+              />
+            </label>
+          </div>
+        </div>
+
         <div className="panel rounded-[2rem] p-8">
           <h2 className="font-display text-3xl text-ink">Template</h2>
           <div className="mt-5 space-y-4">

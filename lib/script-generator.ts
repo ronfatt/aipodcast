@@ -52,6 +52,49 @@ function buildSummary(topic: string, sourceNotes: string) {
   return `围绕“${topic}”展开一集双人对话，强调解释、追问与总结的节奏。`;
 }
 
+function buildShowPromptContext(input: CreateEpisodeInput) {
+  return [
+    `Show profile id: ${input.showProfileId || "custom-show"}`,
+    `Show tagline: ${input.showTagline || "No tagline provided."}`,
+    `Show cover image: ${input.showCoverImageUrl || "No cover image provided."}`,
+    `Target audience: ${input.targetAudience || "General creators."}`,
+    `Show format: ${input.showFormat || "Two-host podcast episode."}`,
+    `Intro style: ${input.introStyle || "Start quickly and clearly."}`,
+    `Outro style: ${input.outroStyle || "End with a practical takeaway."}`,
+    `Default spoken intro: ${input.defaultIntro || "No default intro."}`,
+    `Default spoken outro: ${input.defaultOutro || "No default outro."}`,
+    `Default show description: ${input.defaultDescription || "No default description."}`,
+  ].join("\n");
+}
+
+function buildShowAwareSummary(input: CreateEpisodeInput, topic: string, sourceNotes: string) {
+  const base = buildSummary(topic, sourceNotes);
+  const audience = input.targetAudience?.trim();
+  const showDescription = input.defaultDescription?.trim();
+
+  if (!audience && !showDescription) {
+    return base;
+  }
+
+  return [base, audience ? `这集特别会照顾 ${audience} 的听感和理解路径。` : "", showDescription ? `节目基调参考：${showDescription}` : ""]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function buildShowAwareCta(input: CreateEpisodeInput, topic: string) {
+  const base = buildCta(topic);
+  const outro = input.outroStyle?.trim();
+  const defaultOutro = input.defaultOutro?.trim();
+
+  if (!outro && !defaultOutro) {
+    return base;
+  }
+
+  return [base, defaultOutro ? `默认收尾口径参考：${defaultOutro}` : "", outro ? `结尾语气参考：${outro}` : ""]
+    .filter(Boolean)
+    .join(" ");
+}
+
 function buildMemoryLine(host: VoiceProfile) {
   return [
     `biases: ${host.worldviewBiases.join(", ")}`,
@@ -362,9 +405,9 @@ function buildEpisodeFromTurns(
     id: makeEpisodeId(),
     title: title || buildTitle(topic, input.template),
     showName: input.showName.trim() || "Untitled Show",
-    summary: summary || buildSummary(topic, input.sourceNotes),
+    summary: summary || buildShowAwareSummary(input, topic, input.sourceNotes),
     showNotes: showNotes || buildShowNotes(topic, input.sourceNotes),
-    cta: cta || buildCta(topic),
+    cta: cta || buildShowAwareCta(input, topic),
     sourceType: input.sourceNotes.trim() ? "article" : "topic",
     sourceContent: input.sourceNotes.trim() || topic,
     template: input.template,
@@ -422,6 +465,7 @@ async function generateStructuredScript(
             type: "input_text",
             text: [
               `Show name: ${input.showName || "Future Banter"}`,
+              buildShowPromptContext(input),
               `Topic: ${topic}`,
               `Source notes: ${input.sourceNotes || "No extra notes provided."}`,
               `Template: ${input.template}`,
@@ -452,6 +496,11 @@ async function generateStructuredScript(
               "- Return 8 to 12 dialogue turns.",
               "- Alternate speakers naturally, starting with A.",
               "- End with Host A delivering the final takeaway in one concise closing turn.",
+              "- The opening should match the show's intro style and audience expectations.",
+              "- When useful, lightly echo the show's default spoken intro near the beginning, but do not make it sound copy-pasted.",
+              "- The closing should match the show's outro style and overall brand voice.",
+              "- When useful, let the final closing rhythm echo the show's default spoken outro, but keep it natural.",
+              "- The conversation should feel like one recurring show identity, not a generic demo.",
               "- Host A explains and drives the story.",
               "- Host B must not merely paraphrase Host A. Each Host B turn must either challenge, reframe, ground with reality, or sharpen the takeaway.",
               "- Let each host sound like the same recurring person across episodes, with consistent preferences, recurring angles, and verbal habits.",

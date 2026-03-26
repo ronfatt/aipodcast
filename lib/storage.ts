@@ -60,6 +60,36 @@ export async function uploadFileToStorage(
   };
 }
 
+export async function uploadBufferToStorage(
+  file: Buffer | Uint8Array | ArrayBuffer,
+  objectPath: string,
+  contentType: string,
+) {
+  if (!isSupabaseStorageEnabled()) {
+    throw new Error("Supabase storage is not configured.");
+  }
+
+  await ensureBucket();
+  const supabase = getSupabaseAdminClient();
+  const payload = file instanceof ArrayBuffer ? Buffer.from(file) : Buffer.from(file);
+  const { error } = await supabase.storage.from(bucketName).upload(objectPath, payload, {
+    contentType,
+    upsert: true,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  const { data } = supabase.storage.from(bucketName).getPublicUrl(objectPath);
+
+  return {
+    publicUrl: data.publicUrl,
+    objectPath,
+    bucketName,
+  };
+}
+
 export async function deleteStorageObjectFromUrl(url?: string) {
   if (!url || !isSupabaseStorageEnabled()) {
     return;

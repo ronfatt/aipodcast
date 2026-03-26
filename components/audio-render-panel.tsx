@@ -44,7 +44,8 @@ export function AudioRenderPanel({
       <p className="text-sm font-semibold text-ink">Audio export</p>
       <p className="mt-2 text-sm leading-6 text-ink/68">
         Render this script into podcast audio. On deployed environments the app now uses OpenAI TTS;
-        on local macOS it can still fall back to system voices.
+        on local macOS it can still fall back to system voices. If this episode belongs to a show
+        with a default intro or outro, those lines are stitched into the final audio automatically.
       </p>
 
       {localAudioUrl ? (

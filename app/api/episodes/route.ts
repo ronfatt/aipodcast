@@ -20,7 +20,18 @@ export async function POST(request: Request) {
     .filter(Boolean);
   const usedBatchMode = batchTopics.length > 0;
   const baseInput = {
+    showId: body.showId?.trim() || undefined,
     showName: body.showName?.trim() || "Future Banter",
+    showProfileId: body.showProfileId?.trim() || undefined,
+    showTagline: body.showTagline?.trim() || undefined,
+    showCoverImageUrl: body.showCoverImageUrl?.trim() || undefined,
+    targetAudience: body.targetAudience?.trim() || undefined,
+    showFormat: body.showFormat?.trim() || undefined,
+    introStyle: body.introStyle?.trim() || undefined,
+    outroStyle: body.outroStyle?.trim() || undefined,
+    defaultIntro: body.defaultIntro?.trim() || undefined,
+    defaultOutro: body.defaultOutro?.trim() || undefined,
+    defaultDescription: body.defaultDescription?.trim() || undefined,
     topic: body.topic?.trim() || "",
     sourceNotes: body.sourceNotes?.trim() || "",
     template: body.template?.trim() || "news-breakdown",

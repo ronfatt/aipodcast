@@ -3,7 +3,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { execFile } from "node:child_process";
 import { ensureLocalDir, isSupabaseStorageEnabled, uploadFileToStorage } from "@/lib/storage";
-import { Episode } from "@/lib/types";
+import { Episode, Show } from "@/lib/types";
 
 const execFileAsync = promisify(execFile);
 const publicDir = path.join(process.cwd(), "public");
@@ -18,23 +18,33 @@ function sanitizeSegment(value: string) {
     .slice(0, 50);
 }
 
-function buildMetadata(episode: Episode) {
+function buildMetadata(episode: Episode, show?: Show) {
   return {
     id: episode.id,
     title: episode.title,
     showName: episode.showName,
+    showId: episode.showId ?? null,
     summary: episode.summary,
     durationLabel: episode.durationLabel,
     template: episode.template,
     sourceType: episode.sourceType,
     generationMode: episode.generationMode ?? "fallback",
     audioUrl: episode.audioUrl ?? null,
+    defaultShowDescription: show?.defaultDescription ?? null,
+    includesShowIntro: Boolean(show?.defaultIntro?.trim()),
+    includesShowOutro: Boolean(show?.defaultOutro?.trim()),
+    backgroundMusicUrl: show?.backgroundMusicUrl ?? null,
+    backgroundMusicLevel: show?.backgroundMusicLevel ?? null,
+    introStingUrl: show?.introStingUrl ?? null,
+    outroStingUrl: show?.outroStingUrl ?? null,
     generatedAt: new Date().toISOString(),
   };
 }
 
-function buildDescription(episode: Episode) {
+function buildDescription(episode: Episode, show?: Show) {
   return [
+    show?.defaultDescription || "",
+    show?.defaultDescription ? "" : "",
     episode.summary,
     "",
     "Show Notes",
@@ -45,7 +55,7 @@ function buildDescription(episode: Episode) {
   ].join("\n");
 }
 
-export async function createEpisodeExportPackage(episode: Episode, audioFilePath: string) {
+export async function createEpisodeExportPackage(episode: Episode, audioFilePath: string, show?: Show) {
   const slug = `${sanitizeSegment(episode.showName)}-${sanitizeSegment(episode.id)}`;
   const workingDir = path.join(scratchRoot, slug);
   const zipFilePath = path.join(packageDir, `${slug}.zip`);
@@ -62,10 +72,25 @@ export async function createEpisodeExportPackage(episode: Episode, audioFilePath
   await writeFile(path.join(workingDir, "summary.txt"), `${episode.summary}\n`, "utf8");
   await writeFile(path.join(workingDir, "show-notes.txt"), `${episode.showNotes.join("\n")}\n`, "utf8");
   await writeFile(path.join(workingDir, "cta.txt"), `${episode.cta}\n`, "utf8");
-  await writeFile(path.join(workingDir, "description.txt"), `${buildDescription(episode)}\n`, "utf8");
+  await writeFile(path.join(workingDir, "description.txt"), `${buildDescription(episode, show)}\n`, "utf8");
+  if (show?.defaultIntro) {
+    await writeFile(path.join(workingDir, "default-intro.txt"), `${show.defaultIntro}\n`, "utf8");
+  }
+  if (show?.defaultOutro) {
+    await writeFile(path.join(workingDir, "default-outro.txt"), `${show.defaultOutro}\n`, "utf8");
+  }
+  if (show?.backgroundMusicUrl) {
+    await writeFile(path.join(workingDir, "background-music-url.txt"), `${show.backgroundMusicUrl}\n`, "utf8");
+  }
+  if (show?.introStingUrl) {
+    await writeFile(path.join(workingDir, "intro-sting-url.txt"), `${show.introStingUrl}\n`, "utf8");
+  }
+  if (show?.outroStingUrl) {
+    await writeFile(path.join(workingDir, "outro-sting-url.txt"), `${show.outroStingUrl}\n`, "utf8");
+  }
   await writeFile(
     path.join(workingDir, "metadata.json"),
-    `${JSON.stringify(buildMetadata(episode), null, 2)}\n`,
+    `${JSON.stringify(buildMetadata(episode, show), null, 2)}\n`,
     "utf8",
   );
 

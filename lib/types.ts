@@ -18,6 +18,37 @@ export type PersonaMode =
   | "custom";
 
 export type ConflictLevel = "low" | "medium" | "high";
+export type BackgroundMusicLevel = "subtle" | "balanced" | "forward";
+
+export type ShowProfile = {
+  id: string;
+  name: string;
+  tagline: string;
+  category: string;
+  coverImageUrl?: string;
+  format: string;
+  audience: string;
+  publishingCadence: string;
+  introStyle: string;
+  outroStyle: string;
+  defaultIntro?: string;
+  defaultOutro?: string;
+  defaultDescription?: string;
+  backgroundMusicUrl?: string;
+  backgroundMusicLevel?: BackgroundMusicLevel;
+  introStingUrl?: string;
+  outroStingUrl?: string;
+  template: string;
+  personaMode: PersonaMode;
+  conflictLevel: ConflictLevel;
+  hostAId: string;
+  hostBId: string;
+};
+
+export type Show = ShowProfile & {
+  userId?: string;
+  updatedAt: string;
+};
 
 export type VoiceProfile = {
   id: string;
@@ -57,6 +88,7 @@ export type EpisodeGenerationMemory = {
 export type Episode = {
   id: string;
   userId?: string;
+  showId?: string;
   title: string;
   showName: string;
   summary: string;
@@ -78,6 +110,17 @@ export type Episode = {
 
 export type CreateEpisodeInput = {
   showName: string;
+  showId?: string;
+  showProfileId?: string;
+  showTagline?: string;
+  showCoverImageUrl?: string;
+  targetAudience?: string;
+  showFormat?: string;
+  introStyle?: string;
+  outroStyle?: string;
+  defaultIntro?: string;
+  defaultOutro?: string;
+  defaultDescription?: string;
   topic: string;
   sourceNotes: string;
   template: string;
@@ -86,6 +129,8 @@ export type CreateEpisodeInput = {
   personaMode?: PersonaMode;
   conflictLevel?: ConflictLevel;
 };
+
+export type CreateShowInput = Omit<ShowProfile, "id">;
 
 export type CreateEpisodesRequest = CreateEpisodeInput & {
   batchTopics?: string[];

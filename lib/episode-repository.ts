@@ -13,6 +13,7 @@ import {
 type EpisodeRow = {
   id: string;
   user_id: string | null;
+  show_id?: string | null;
   title: string;
   show_name: string;
   summary: string;
@@ -46,10 +47,12 @@ function getFallbackStore() {
   return globalStore.__episodeStore;
 }
 
-function mapEpisodeToRow(episode: Episode): EpisodeRow {
+function mapEpisodeToRow(episode: Episode, options?: { includeShowId?: boolean }): EpisodeRow {
+  const includeShowId = options?.includeShowId ?? true;
   return {
     id: episode.id,
     user_id: episode.userId ?? null,
+    ...(includeShowId ? { show_id: episode.showId ?? null } : {}),
     title: episode.title,
     show_name: episode.showName,
     summary: episode.summary,
@@ -74,6 +77,7 @@ function mapRowToEpisode(row: EpisodeRow): Episode {
   return {
     id: row.id,
     userId: row.user_id ?? undefined,
+    showId: row.show_id ?? undefined,
     title: row.title,
     showName: row.show_name,
     summary: row.summary,
@@ -191,11 +195,29 @@ async function getEpisodeByIdAnyUserFromSupabase(id: string) {
 async function upsertEpisodeToSupabase(episode: Episode) {
   const supabase = getSupabaseAdminClient();
   const row = mapEpisodeToRow(episode);
-  const { error } = await supabase.from("episodes").upsert(row as never);
+  let { error } = await supabase.from("episodes").upsert(row as never);
+
+  if (error && isMissingShowIdColumnError(error)) {
+    const legacyRow = mapEpisodeToRow(episode, { includeShowId: false });
+    ({ error } = await supabase.from("episodes").upsert(legacyRow as never));
+  }
 
   if (error) {
     throw error;
   }
+}
+
+function isMissingShowIdColumnError(error: unknown) {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const candidate = error as { code?: string; message?: string };
+  return (
+    candidate.code === "PGRST204" ||
+    candidate.code === "42703" ||
+    candidate.message?.includes("show_id") === true
+  );
 }
 
 async function deleteEpisodeFromSupabase(id: string, userId: string) {
@@ -255,6 +277,7 @@ export async function createEpisode(input: CreateEpisodeInput, userId?: string) 
   const nextEpisode = {
     ...episode,
     userId,
+    showId: input.showId,
   };
 
   if (hasSupabaseConfig()) {

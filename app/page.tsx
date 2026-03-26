@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/auth-server";
 import { listEpisodes } from "@/lib/episode-store";
 import { sampleEpisodes, voiceProfiles } from "@/lib/mock-data";
 import { roleLabel } from "@/lib/personas";
+import { listShows } from "@/lib/show-store";
 
 const valueProps = [
   "从主题一句话生成双人播客脚本",
@@ -14,6 +15,7 @@ const valueProps = [
 export default async function HomePage() {
   const user = await getCurrentUser();
   const queueEpisodes = user ? (await listEpisodes(user.id)).slice(0, 3) : sampleEpisodes.slice(0, 3);
+  const shows = await listShows(user?.id);
 
   return (
     <AppShell title="AIPodcast Studio" kicker="V1 Product Skeleton">
@@ -96,6 +98,41 @@ export default async function HomePage() {
               </div>
             ))}
           </div>
+        </div>
+      </section>
+
+      <section className="panel rounded-[2rem] p-8">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="text-sm uppercase tracking-[0.3em] text-coral">Show System</p>
+            <h2 className="mt-2 font-display text-3xl text-ink">Turn episodes into a recurring show</h2>
+          </div>
+          <Link href="/episodes/new" className="text-sm font-semibold text-teal">
+            Configure show
+          </Link>
+        </div>
+        <div className="mt-6 grid gap-4 lg:grid-cols-3">
+          {shows.map((profile) => (
+            <article key={profile.id} className="rounded-[1.5rem] border border-ink/8 bg-white/70 p-5">
+              {profile.coverImageUrl ? (
+                <div
+                  className="mb-4 h-36 rounded-[1.25rem] bg-cover bg-center"
+                  style={{
+                    backgroundImage: `linear-gradient(rgba(19,20,18,0.12), rgba(19,20,18,0.12)), url(${profile.coverImageUrl})`,
+                  }}
+                />
+              ) : null}
+              <p className="text-xs uppercase tracking-[0.25em] text-ink/45">{profile.category}</p>
+              <h3 className="mt-3 text-xl font-semibold text-ink">{profile.name}</h3>
+              <p className="mt-2 text-sm leading-6 text-ink/70">{profile.tagline}</p>
+              <div className="mt-4 space-y-2 text-sm text-ink/60">
+                <p>{profile.format}</p>
+                <p>{profile.audience}</p>
+                <p>{profile.publishingCadence}</p>
+                {profile.defaultDescription ? <p>{profile.defaultDescription}</p> : null}
+              </div>
+            </article>
+          ))}
         </div>
       </section>
     </AppShell>

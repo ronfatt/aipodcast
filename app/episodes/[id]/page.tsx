@@ -8,6 +8,7 @@ import { ScriptPreview } from "@/components/script-preview";
 import { requireUser } from "@/lib/auth-server";
 import { getEpisodeById } from "@/lib/episode-store";
 import { inferPersonaMode, personaModeLabel, roleLabel } from "@/lib/personas";
+import { getShowById, listShows } from "@/lib/show-store";
 
 export default async function EpisodeDetailPage({
   params,
@@ -23,6 +24,9 @@ export default async function EpisodeDetailPage({
   }
 
   const personaMode = inferPersonaMode(episode.hostA, episode.hostB);
+  const showProfile =
+    (episode.showId ? await getShowById(episode.showId, user?.id) : undefined) ||
+    (await listShows(user?.id)).find((show) => show.name === episode.showName);
 
   return (
     <AppShell title={episode.title} kicker="Script Editor">
@@ -54,6 +58,18 @@ export default async function EpisodeDetailPage({
               <dt className="text-ink/45">Persona mode</dt>
               <dd className="mt-1 text-base text-ink">{personaModeLabel(personaMode)}</dd>
             </div>
+            {showProfile ? (
+              <>
+                <div>
+                  <dt className="text-ink/45">Show category</dt>
+                  <dd className="mt-1 text-base text-ink">{showProfile.category}</dd>
+                </div>
+                <div>
+                  <dt className="text-ink/45">Cadence</dt>
+                  <dd className="mt-1 text-base text-ink">{showProfile.publishingCadence}</dd>
+                </div>
+              </>
+            ) : null}
             <div>
               <dt className="text-ink/45">Generation mode</dt>
               <dd className="mt-1 text-base text-ink">{episode.generationMode ?? "fallback"}</dd>
@@ -70,10 +86,26 @@ export default async function EpisodeDetailPage({
         <main className="panel rounded-[2rem] p-6">
           <p className="text-sm uppercase tracking-[0.3em] text-teal">Dialogue Draft</p>
           <h2 className="mt-3 font-display text-3xl text-ink">Editable script preview</h2>
+          {showProfile?.coverImageUrl ? (
+            <div
+              className="mt-4 h-44 rounded-[1.75rem] border border-ink/8 bg-cover bg-center"
+              style={{
+                backgroundImage: `linear-gradient(rgba(19,20,18,0.12), rgba(19,20,18,0.12)), url(${showProfile.coverImageUrl})`,
+              }}
+            />
+          ) : null}
           <p className="mt-3 max-w-2xl text-sm leading-6 text-ink/70">{episode.summary}</p>
           <div className="mt-4 rounded-[1.5rem] border border-ink/8 bg-white/65 p-4 text-sm leading-6 text-ink/68">
             {episode.sourceContent}
           </div>
+          {showProfile ? (
+            <div className="mt-4 rounded-[1.5rem] border border-dashed border-teal/20 bg-teal/5 p-4 text-sm leading-6 text-ink/70">
+              <p className="text-xs uppercase tracking-[0.25em] text-teal">Show Identity</p>
+              <p className="mt-2">{showProfile.tagline}</p>
+              <p className="mt-2">{showProfile.format}</p>
+              <p className="mt-2">Audience: {showProfile.audience}</p>
+            </div>
+          ) : null}
           <div className="mt-6">
             <ScriptPreview turns={episode.script} />
           </div>
@@ -94,6 +126,12 @@ export default async function EpisodeDetailPage({
               <p className="text-xs uppercase tracking-[0.25em] text-teal">CTA</p>
               <p className="mt-2 text-sm leading-6 text-ink/74">{episode.cta}</p>
             </div>
+            {showProfile?.defaultDescription ? (
+              <div className="mt-5 rounded-[1.25rem] border border-dashed border-gold/30 bg-gold/10 px-4 py-4">
+                <p className="text-xs uppercase tracking-[0.25em] text-ink/55">Show Default Description</p>
+                <p className="mt-2 text-sm leading-6 text-ink/74">{showProfile.defaultDescription}</p>
+              </div>
+            ) : null}
           </div>
         </main>
 
