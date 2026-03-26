@@ -37,6 +37,8 @@ function buildMetadata(episode: Episode, show?: Show) {
     backgroundMusicLevel: show?.backgroundMusicLevel ?? null,
     introStingUrl: show?.introStingUrl ?? null,
     outroStingUrl: show?.outroStingUrl ?? null,
+    variants: episode.variants ?? null,
+    analytics: episode.analytics ?? null,
     generatedAt: new Date().toISOString(),
   };
 }
@@ -73,6 +75,41 @@ export async function createEpisodeExportPackage(episode: Episode, audioFilePath
   await writeFile(path.join(workingDir, "show-notes.txt"), `${episode.showNotes.join("\n")}\n`, "utf8");
   await writeFile(path.join(workingDir, "cta.txt"), `${episode.cta}\n`, "utf8");
   await writeFile(path.join(workingDir, "description.txt"), `${buildDescription(episode, show)}\n`, "utf8");
+  if (episode.variants?.titles.length) {
+    await writeFile(
+      path.join(workingDir, "title-variants.txt"),
+      `${episode.variants.titles.map((item) => `[${item.style}] ${item.text}`).join("\n")}\n`,
+      "utf8",
+    );
+  }
+  if (episode.variants?.hookLines.length) {
+    await writeFile(
+      path.join(workingDir, "hook-variants.txt"),
+      `${episode.variants.hookLines.map((item) => `[${item.style}] ${item.text}`).join("\n")}\n`,
+      "utf8",
+    );
+  }
+  if (episode.variants?.ctas.length) {
+    await writeFile(
+      path.join(workingDir, "cta-variants.txt"),
+      `${episode.variants.ctas.map((item) => `[${item.style}] ${item.text}`).join("\n")}\n`,
+      "utf8",
+    );
+  }
+  if (episode.variants?.socialCaptions.length) {
+    await writeFile(
+      path.join(workingDir, "social-captions.txt"),
+      `${episode.variants.socialCaptions.map((item) => `[${item.style}] ${item.text}`).join("\n\n")}\n`,
+      "utf8",
+    );
+  }
+  if (episode.variants?.thumbnailTexts.length) {
+    await writeFile(
+      path.join(workingDir, "thumbnail-texts.txt"),
+      `${episode.variants.thumbnailTexts.map((item) => `[${item.style}] ${item.text}`).join("\n")}\n`,
+      "utf8",
+    );
+  }
   if (show?.defaultIntro) {
     await writeFile(path.join(workingDir, "default-intro.txt"), `${show.defaultIntro}\n`, "utf8");
   }
@@ -93,6 +130,109 @@ export async function createEpisodeExportPackage(episode: Episode, audioFilePath
     `${JSON.stringify(buildMetadata(episode, show), null, 2)}\n`,
     "utf8",
   );
+
+  await execFileAsync("/usr/bin/zip", ["-j", "-r", zipFilePath, workingDir]);
+
+  if (isSupabaseStorageEnabled()) {
+    const uploaded = await uploadFileToStorage(
+      zipFilePath,
+      `packages/${slug}.zip`,
+      "application/zip",
+    );
+
+    return {
+      packageUrl: uploaded.publicUrl,
+      zipFilePath,
+    };
+  }
+
+  return {
+    packageUrl: publicUrl,
+    zipFilePath,
+  };
+}
+
+export async function createEpisodeClipsPackage(episode: Episode) {
+  const slug = `${sanitizeSegment(episode.showName)}-${sanitizeSegment(episode.id)}-clips`;
+  const workingDir = path.join(scratchRoot, slug);
+  const zipFilePath = path.join(packageDir, `${slug}.zip`);
+  const publicUrl = `/generated-packages/${slug}.zip`;
+
+  await ensureLocalDir(packageDir);
+  await rm(workingDir, { recursive: true, force: true });
+  await mkdir(workingDir, { recursive: true });
+
+  const clips = episode.clips ?? [];
+  const variants = episode.variants;
+
+  await writeFile(path.join(workingDir, "episode-title.txt"), `${episode.title}\n`, "utf8");
+  await writeFile(path.join(workingDir, "episode-summary.txt"), `${episode.summary}\n`, "utf8");
+
+  if (clips.length) {
+    await writeFile(
+      path.join(workingDir, "clips-overview.json"),
+      `${JSON.stringify(clips, null, 2)}\n`,
+      "utf8",
+    );
+
+    await writeFile(
+      path.join(workingDir, "clip-captions.txt"),
+      `${clips
+        .map(
+          (clip, index) =>
+            `${index + 1}. ${clip.clipTitle}\n[${clip.tags.join(", ")}]\n${clip.shortCaption}`,
+        )
+        .join("\n\n")}\n`,
+      "utf8",
+    );
+
+    await Promise.all(
+      clips.map((clip, index) =>
+        writeFile(
+          path.join(workingDir, `clip-${String(index + 1).padStart(2, "0")}.txt`),
+          [
+            clip.clipTitle,
+            `Segment: ${clip.startSegment} -> ${clip.endSegment}`,
+            `Tags: ${clip.tags.join(", ")}`,
+            "",
+            "Hook line",
+            clip.hookLine,
+            "",
+            "Why it works",
+            clip.whyItWorks,
+            "",
+            "Short caption",
+            clip.shortCaption,
+          ].join("\n"),
+          "utf8",
+        ),
+      ),
+    );
+  }
+
+  if (variants?.socialCaptions.length) {
+    await writeFile(
+      path.join(workingDir, "social-caption-variants.txt"),
+      `${variants.socialCaptions.map((item) => `[${item.style}] ${item.text}`).join("\n\n")}\n`,
+      "utf8",
+    );
+  }
+
+  if (variants?.thumbnailTexts.length) {
+    await writeFile(
+      path.join(workingDir, "thumbnail-text-options.txt"),
+      `${variants.thumbnailTexts.map((item) => `[${item.style}] ${item.text}`).join("\n")}\n`,
+      "utf8",
+    );
+  }
+
+  if (variants?.titles.length) {
+    await writeFile(
+      path.join(workingDir, "short-content-title-options.txt"),
+      `${variants.titles.map((item) => `[${item.style}] ${item.text}`).join("\n")}\n`,
+      "utf8",
+    );
+  }
 
   await execFileAsync("/usr/bin/zip", ["-j", "-r", zipFilePath, workingDir]);
 

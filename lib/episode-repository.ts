@@ -1,5 +1,5 @@
 import { sampleEpisodes, voiceProfiles } from "@/lib/mock-data";
-import { generateEpisodeFromInput } from "@/lib/script-generator";
+import { generateEpisodeFromInput, scoreTopicIdea } from "@/lib/script-generator";
 import { hasSupabaseConfig, getSupabaseAdminClient } from "@/lib/supabase";
 import { deleteStorageObjectFromUrl } from "@/lib/storage";
 import {
@@ -7,6 +7,7 @@ import {
   Episode,
   EpisodeGenerationMemory,
   HostEpisodeMemory,
+  UpdateEpisodeAnalyticsInput,
   UpdateEpisodeInput,
 } from "@/lib/types";
 
@@ -14,6 +15,12 @@ type EpisodeRow = {
   id: string;
   user_id: string | null;
   show_id?: string | null;
+  topic_score?: Episode["topicScore"] | null;
+  topic_rewrites?: string[] | null;
+  clips?: Episode["clips"] | null;
+  variants?: Episode["variants"] | null;
+  analytics?: Episode["analytics"] | null;
+  applied_recommendation?: Episode["appliedRecommendation"] | null;
   title: string;
   show_name: string;
   summary: string;
@@ -53,6 +60,12 @@ function mapEpisodeToRow(episode: Episode, options?: { includeShowId?: boolean }
     id: episode.id,
     user_id: episode.userId ?? null,
     ...(includeShowId ? { show_id: episode.showId ?? null } : {}),
+    topic_score: episode.topicScore ?? null,
+    topic_rewrites: episode.topicRewrites ?? null,
+    clips: episode.clips ?? null,
+    variants: episode.variants ?? null,
+    analytics: episode.analytics ?? null,
+    applied_recommendation: episode.appliedRecommendation ?? null,
     title: episode.title,
     show_name: episode.showName,
     summary: episode.summary,
@@ -78,6 +91,12 @@ function mapRowToEpisode(row: EpisodeRow): Episode {
     id: row.id,
     userId: row.user_id ?? undefined,
     showId: row.show_id ?? undefined,
+    topicScore: row.topic_score ?? undefined,
+    topicRewrites: row.topic_rewrites ?? undefined,
+    clips: row.clips ?? undefined,
+    variants: row.variants ?? undefined,
+    analytics: row.analytics ?? undefined,
+    appliedRecommendation: row.applied_recommendation ?? undefined,
     title: row.title,
     showName: row.show_name,
     summary: row.summary,
@@ -197,8 +216,14 @@ async function upsertEpisodeToSupabase(episode: Episode) {
   const row = mapEpisodeToRow(episode);
   let { error } = await supabase.from("episodes").upsert(row as never);
 
-  if (error && isMissingShowIdColumnError(error)) {
+  if (error && isMissingEpisodeColumnsError(error)) {
     const legacyRow = mapEpisodeToRow(episode, { includeShowId: false });
+    delete (legacyRow as Partial<EpisodeRow>).topic_score;
+    delete (legacyRow as Partial<EpisodeRow>).topic_rewrites;
+    delete (legacyRow as Partial<EpisodeRow>).clips;
+    delete (legacyRow as Partial<EpisodeRow>).variants;
+    delete (legacyRow as Partial<EpisodeRow>).analytics;
+    delete (legacyRow as Partial<EpisodeRow>).applied_recommendation;
     ({ error } = await supabase.from("episodes").upsert(legacyRow as never));
   }
 
@@ -207,7 +232,7 @@ async function upsertEpisodeToSupabase(episode: Episode) {
   }
 }
 
-function isMissingShowIdColumnError(error: unknown) {
+function isMissingEpisodeColumnsError(error: unknown) {
   if (!error || typeof error !== "object") {
     return false;
   }
@@ -216,7 +241,13 @@ function isMissingShowIdColumnError(error: unknown) {
   return (
     candidate.code === "PGRST204" ||
     candidate.code === "42703" ||
-    candidate.message?.includes("show_id") === true
+    candidate.message?.includes("show_id") === true ||
+    candidate.message?.includes("topic_score") === true ||
+    candidate.message?.includes("topic_rewrites") === true ||
+    candidate.message?.includes("clips") === true ||
+    candidate.message?.includes("variants") === true ||
+    candidate.message?.includes("analytics") === true ||
+    candidate.message?.includes("applied_recommendation") === true
   );
 }
 
@@ -273,11 +304,21 @@ export async function createEpisode(input: CreateEpisodeInput, userId?: string) 
   const hostB = voiceProfiles.find((voice) => voice.id === input.hostBId) ?? voiceProfiles[1];
   const recentEpisodes = (await listEpisodes(userId)).slice(0, 12);
   const generationMemory = buildEpisodeGenerationMemory(recentEpisodes, hostA.id, hostB.id);
+  const topicScoring =
+    input.approvedTopicScore
+      ? {
+          topicScore: input.approvedTopicScore,
+          rewrites: input.approvedTopicRewrites ?? [],
+          approved: input.approvedTopicScore.overallScore >= 75,
+        }
+      : await scoreTopicIdea(input);
   const episode = await generateEpisodeFromInput(input, hostA, hostB, generationMemory);
   const nextEpisode = {
     ...episode,
     userId,
     showId: input.showId,
+    topicScore: topicScoring.topicScore,
+    topicRewrites: topicScoring.rewrites,
   };
 
   if (hasSupabaseConfig()) {
@@ -407,6 +448,59 @@ export async function updateEpisode(id: string, input: UpdateEpisodeInput, userI
       return nextEpisode;
     } catch (error) {
       console.error("Failed to update episode in Supabase, using fallback store.", error);
+    }
+  }
+
+  getFallbackStore().set(id, nextEpisode);
+  return nextEpisode;
+}
+
+export async function updateEpisodeAnalytics(
+  id: string,
+  input: UpdateEpisodeAnalyticsInput,
+  userId?: string,
+) {
+  const episode = await getEpisodeById(id, userId);
+
+  if (!episode) {
+    return undefined;
+  }
+
+  const nextEpisode: Episode = {
+    ...episode,
+    analytics: {
+      hostPair: episode.analytics?.hostPair ?? `${episode.hostA.name} + ${episode.hostB.name}`,
+      conflictLevel: episode.analytics?.conflictLevel ?? "medium",
+      templateType: episode.analytics?.templateType ?? episode.template,
+      numberOfClipLines: episode.analytics?.numberOfClipLines ?? 0,
+      publishingPlatform: input.publishingPlatform,
+      selectedTitleStyle: input.selectedTitleStyle,
+      metrics: {
+        impressions: input.metrics.impressions,
+        clicks: input.metrics.clicks,
+        listens: input.metrics.listens,
+        completionRate: input.metrics.completionRate,
+        saves: input.metrics.saves,
+        shares: input.metrics.shares,
+        bestPerformingClipId: input.metrics.bestPerformingClipId,
+      },
+    },
+    updatedAt: hasSupabaseConfig() ? buildUpdatedTimestamp() : new Date().toLocaleString("zh-CN", {
+      hour12: false,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    }),
+  };
+
+  if (hasSupabaseConfig()) {
+    try {
+      await upsertEpisodeToSupabase(nextEpisode);
+      return nextEpisode;
+    } catch (error) {
+      console.error("Failed to update episode analytics in Supabase, using fallback store.", error);
     }
   }
 

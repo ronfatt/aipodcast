@@ -4,10 +4,30 @@ import {
   ConflictLevel,
   CreateEpisodeInput,
   Episode,
+  EpisodeClip,
+  EpisodeClipTag,
   EpisodeGenerationMemory,
+  EpisodeAnalytics,
+  EpisodeTextVariant,
+  EpisodeVariantBundle,
+  EpisodeVariantStyle,
+  ScriptSegmentLabel,
   ScriptTurn,
+  TopicScore,
+  TopicScoringResult,
   VoiceProfile,
 } from "@/lib/types";
+
+const segmentBlueprint = [
+  { label: "hook", title: "Hook", description: "Max 80 Chinese characters, immediate tension." },
+  { label: "setup", title: "Setup", description: "Frame the topic and introduce the core conflict." },
+  { label: "first_clash", title: "First Clash", description: "Host B challenges Host A directly." },
+  { label: "reality_check", title: "Reality Check", description: "Bring in market, business, or audience behavior." },
+  { label: "concrete_example", title: "Concrete Example", description: "Use one specific example or scenario." },
+  { label: "reframe", title: "Reframe", description: "Move from surface debate to a deeper point." },
+  { label: "final_takeaway", title: "Final Takeaway", description: "Compress the useful lesson clearly." },
+  { label: "clip_line", title: "Clip Line", description: "End with a short clip-worthy closing line from Host A." },
+] satisfies Array<{ label: ScriptSegmentLabel; title: string; description: string }>;
 
 function makeEpisodeId() {
   return `ep-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -29,6 +49,10 @@ function estimateDuration(turns: ScriptTurn[]) {
   const totalChars = turns.reduce((sum, turn) => sum + turn.text.length, 0);
   const minutes = Math.max(6, Math.min(12, Math.round(totalChars / 95)));
   return `${minutes} min`;
+}
+
+function clampScore(value: number) {
+  return Math.max(0, Math.min(100, Math.round(value)));
 }
 
 function buildTitle(topic: string, template: string) {
@@ -229,10 +253,30 @@ type StructuredEpisodeDraft = {
   summary: string;
   showNotes: string[];
   cta: string;
+  variants: {
+    titles: Array<{ style: EpisodeVariantStyle; text: string }>;
+    hookLines: Array<{ style: EpisodeVariantStyle; text: string }>;
+    ctas: Array<{ style: EpisodeVariantStyle; text: string }>;
+    socialCaptions: Array<{ style: EpisodeVariantStyle; text: string }>;
+    thumbnailTexts: Array<{ style: EpisodeVariantStyle; text: string }>;
+  };
   turns: Array<{
     speaker: "A" | "B";
+    segment: ScriptSegmentLabel;
     text: string;
   }>;
+};
+
+type StructuredTopicScore = {
+  controversyScore: number;
+  relevanceScore: number;
+  audiencePainScore: number;
+  clipabilityScore: number;
+  monetizationScore: number;
+  hookScore: number;
+  overallScore: number;
+  rationale: string;
+  rewrites: string[];
 };
 
 function cleanupSpokenChinese(text: string) {
@@ -267,6 +311,168 @@ function polishTurnsLocally(turns: StructuredEpisodeDraft["turns"]) {
   });
 }
 
+function scoreTopicHeuristically(input: CreateEpisodeInput, topic: string): TopicScoringResult {
+  const text = `${topic} ${input.sourceNotes}`.toLowerCase();
+  const controversyIndicators = ["是不是", "会不会", "骗局", "真相", "误区", "没人", "为什么", "该不该"];
+  const painIndicators = ["流量", "变现", "留存", "成本", "效率", "执行", "赚钱", "增长", "卡住"];
+  const clipIndicators = ["真相", "误区", "没人", "别再", "为什么", "会不会", "该不该"];
+  const monetizationIndicators = ["变现", "赚钱", "商业", "客户", "付费", "销售", "增长"];
+  const relevanceIndicators = ["ai", "内容", "播客", "创作者", "短视频", "平台", "搜索", "品牌"];
+
+  const controversyScore = clampScore(48 + controversyIndicators.filter((item) => text.includes(item)).length * 10);
+  const relevanceScore = clampScore(52 + relevanceIndicators.filter((item) => text.includes(item)).length * 7);
+  const audiencePainScore = clampScore(45 + painIndicators.filter((item) => text.includes(item)).length * 10);
+  const clipabilityScore = clampScore(42 + clipIndicators.filter((item) => text.includes(item)).length * 10);
+  const monetizationScore = clampScore(40 + monetizationIndicators.filter((item) => text.includes(item)).length * 12);
+  const hookScore = clampScore(
+    45 +
+      (topic.includes("？") || topic.includes("?") ? 12 : 0) +
+      (topic.length < 26 ? 10 : 0) +
+      controversyIndicators.filter((item) => topic.includes(item)).length * 8,
+  );
+  const overallScore = clampScore(
+    controversyScore * 0.18 +
+      relevanceScore * 0.2 +
+      audiencePainScore * 0.2 +
+      clipabilityScore * 0.16 +
+      monetizationScore * 0.12 +
+      hookScore * 0.14,
+  );
+
+  const rewrites = [
+    `为什么“${topic}”看起来很热，但大多数人做了还是没有结果？`,
+    `关于“${topic}”，普通创作者最容易高估的地方到底是什么？`,
+    `如果你想靠“${topic}”拿到真实结果，第一步最不该做错的是什么？`,
+  ];
+
+  return {
+    topicScore: {
+      controversyScore,
+      relevanceScore,
+      audiencePainScore,
+      clipabilityScore,
+      monetizationScore,
+      hookScore,
+      overallScore,
+      rationale: "Heuristic scoring based on tension, pain-point language, relevance, and hook strength.",
+    },
+    rewrites,
+    approved: overallScore >= 75,
+  };
+}
+
+async function scoreTopicWithOpenAI(input: CreateEpisodeInput, topic: string) {
+  const client = getOpenAIClient();
+  const response = await client.responses.create({
+    model: getScriptModel(),
+    input: [
+      {
+        role: "system",
+        content: [
+          {
+            type: "input_text",
+            text:
+              "You are scoring podcast topics for viral potential and usefulness. Score the topic before script generation. Be strict and commercially realistic.",
+          },
+        ],
+      },
+      {
+        role: "user",
+        content: [
+          {
+            type: "input_text",
+            text: [
+              `Show: ${input.showName}`,
+              `Audience: ${input.targetAudience || "General creators"}`,
+              `Topic: ${topic}`,
+              `Source notes: ${input.sourceNotes || "No extra notes provided."}`,
+              "Score this topic from 0 to 100 on:",
+              "- controversy_score",
+              "- relevance_score",
+              "- audience_pain_score",
+              "- clipability_score",
+              "- monetization_score",
+              "- hook_score",
+              "- overall_score",
+              "Also provide one short rationale and 3 stronger rewrites if the topic needs work.",
+            ].join("\n"),
+          },
+        ],
+      },
+    ],
+    text: {
+      format: {
+        type: "json_schema",
+        name: "podcast_topic_score",
+        strict: true,
+        schema: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            controversyScore: { type: "number" },
+            relevanceScore: { type: "number" },
+            audiencePainScore: { type: "number" },
+            clipabilityScore: { type: "number" },
+            monetizationScore: { type: "number" },
+            hookScore: { type: "number" },
+            overallScore: { type: "number" },
+            rationale: { type: "string" },
+            rewrites: {
+              type: "array",
+              minItems: 3,
+              maxItems: 3,
+              items: { type: "string" },
+            },
+          },
+          required: [
+            "controversyScore",
+            "relevanceScore",
+            "audiencePainScore",
+            "clipabilityScore",
+            "monetizationScore",
+            "hookScore",
+            "overallScore",
+            "rationale",
+            "rewrites",
+          ],
+        },
+      },
+    },
+  });
+
+  const parsed = JSON.parse(response.output_text) as StructuredTopicScore;
+  const topicScore: TopicScore = {
+    controversyScore: clampScore(parsed.controversyScore),
+    relevanceScore: clampScore(parsed.relevanceScore),
+    audiencePainScore: clampScore(parsed.audiencePainScore),
+    clipabilityScore: clampScore(parsed.clipabilityScore),
+    monetizationScore: clampScore(parsed.monetizationScore),
+    hookScore: clampScore(parsed.hookScore),
+    overallScore: clampScore(parsed.overallScore),
+    rationale: cleanupSpokenChinese(parsed.rationale),
+  };
+
+  return {
+    topicScore,
+    rewrites: parsed.rewrites.map((item) => cleanupSpokenChinese(item)),
+    approved: topicScore.overallScore >= 75,
+  } satisfies TopicScoringResult;
+}
+
+export async function scoreTopicIdea(input: CreateEpisodeInput): Promise<TopicScoringResult> {
+  const topic = normalizeTopic(input.topic, input.sourceNotes);
+
+  if (hasOpenAIKey()) {
+    try {
+      return await scoreTopicWithOpenAI(input, topic);
+    } catch (error) {
+      console.error("OpenAI topic scoring failed, falling back to heuristic scoring.", error);
+    }
+  }
+
+  return scoreTopicHeuristically(input, topic);
+}
+
 function polishStructuredDraftLocally(draft: StructuredEpisodeDraft): StructuredEpisodeDraft {
   return {
     ...draft,
@@ -274,7 +480,162 @@ function polishStructuredDraftLocally(draft: StructuredEpisodeDraft): Structured
     summary: cleanupSpokenChinese(draft.summary),
     showNotes: draft.showNotes.map((note) => cleanupSpokenChinese(note)),
     cta: cleanupSpokenChinese(draft.cta),
+    variants: {
+      titles: draft.variants.titles.map((item) => ({
+        ...item,
+        text: cleanupSpokenChinese(item.text),
+      })),
+      hookLines: draft.variants.hookLines.map((item) => ({
+        ...item,
+        text: cleanupSpokenChinese(item.text),
+      })),
+      ctas: draft.variants.ctas.map((item) => ({
+        ...item,
+        text: cleanupSpokenChinese(item.text),
+      })),
+      socialCaptions: draft.variants.socialCaptions.map((item) => ({
+        ...item,
+        text: cleanupSpokenChinese(item.text),
+      })),
+      thumbnailTexts: draft.variants.thumbnailTexts.map((item) => ({
+        ...item,
+        text: cleanupSpokenChinese(item.text),
+      })),
+    },
     turns: polishTurnsLocally(draft.turns),
+  };
+}
+
+function attachFallbackSegments(
+  turns: Array<{
+    speaker: "A" | "B";
+    text: string;
+  }>,
+): StructuredEpisodeDraft["turns"] {
+  return turns.map((turn, index) => ({
+    ...turn,
+    segment: segmentBlueprint[Math.min(index, segmentBlueprint.length - 1)].label,
+  }));
+}
+
+function clipify(text: string) {
+  const cleaned = cleanupSpokenChinese(text);
+
+  if (cleaned.length <= 38) {
+    return cleaned;
+  }
+
+  return `${cleaned.slice(0, 36).replace(/[，。；：,.;:]+$/g, "")}。`;
+}
+
+function variantify(text: string, maxLength: number) {
+  const cleaned = cleanupSpokenChinese(text).replace(/[。！？!?]+$/g, "");
+
+  if (cleaned.length <= maxLength) {
+    return cleaned;
+  }
+
+  return cleaned.slice(0, maxLength).replace(/[，。；：,.;:\s]+$/g, "");
+}
+
+function normalizeVariantText(
+  text: string,
+  kind: "title" | "hook" | "cta" | "caption" | "thumbnail",
+) {
+  const limits = {
+    title: 32,
+    hook: 42,
+    cta: 44,
+    caption: 68,
+    thumbnail: 18,
+  } satisfies Record<"title" | "hook" | "cta" | "caption" | "thumbnail", number>;
+
+  const normalized = variantify(text, limits[kind]);
+  return kind === "caption" ? normalized : normalized.replace(/[。！？!?]+$/g, "");
+}
+
+function normalizeVariantList(
+  items: Array<{ style: EpisodeVariantStyle; text: string }>,
+  kind: "title" | "hook" | "cta" | "caption" | "thumbnail",
+): EpisodeTextVariant[] {
+  return items.map((item, index) => ({
+    id: `${kind}-${index + 1}`,
+    style: item.style,
+    text: normalizeVariantText(item.text, kind),
+  }));
+}
+
+function hasChallengeSignal(text: string) {
+  return /(但|可是|问题是|等一下|先等一下|现实一点看|真的成立吗|会不会|该不该)/.test(text);
+}
+
+function normalizeSegmentedDraft(draft: StructuredEpisodeDraft, conflictLevel: ConflictLevel) {
+  const normalizedTurns = draft.turns.map((turn, index) => {
+    const expectedSegment = segmentBlueprint[Math.min(index, segmentBlueprint.length - 1)].label;
+    const nextTurn = {
+      ...turn,
+      segment: turn.segment || expectedSegment,
+      text: cleanupSpokenChinese(turn.text),
+    };
+
+    if (index < segmentBlueprint.length) {
+      nextTurn.segment = expectedSegment;
+    }
+
+    if (nextTurn.segment === "first_clash" || nextTurn.segment === "reality_check") {
+      nextTurn.speaker = "B";
+      if (!hasChallengeSignal(nextTurn.text)) {
+        nextTurn.text = `但问题是，${nextTurn.text}`;
+      }
+    }
+
+    if (nextTurn.segment === "clip_line" || nextTurn.segment === "final_takeaway") {
+      nextTurn.speaker = "A";
+    }
+
+    if (nextTurn.segment === "clip_line") {
+      nextTurn.text = clipify(nextTurn.text);
+    }
+
+    return nextTurn;
+  });
+
+  if (conflictLevel !== "low") {
+    const challengeCount = normalizedTurns.filter(
+      (turn) => turn.speaker === "B" && hasChallengeSignal(turn.text),
+    ).length;
+
+    if (challengeCount < 2) {
+      const firstClash = normalizedTurns.find((turn) => turn.segment === "first_clash");
+      const realityCheck = normalizedTurns.find((turn) => turn.segment === "reality_check");
+
+      if (firstClash && !hasChallengeSignal(firstClash.text)) {
+        firstClash.text = `先等一下，${firstClash.text}`;
+      }
+
+      if (realityCheck && !hasChallengeSignal(realityCheck.text)) {
+        realityCheck.text = `现实一点看，${realityCheck.text}`;
+      }
+    }
+  }
+
+  const clipTargets = new Set<ScriptSegmentLabel>(["hook", "reframe", "clip_line"]);
+  normalizedTurns.forEach((turn) => {
+    if (clipTargets.has(turn.segment)) {
+      turn.text = clipify(turn.text);
+    }
+  });
+
+  return {
+    ...draft,
+    variants: {
+      titles: normalizeVariantList(draft.variants.titles, "title"),
+      hookLines: normalizeVariantList(draft.variants.hookLines, "hook"),
+      ctas: normalizeVariantList(draft.variants.ctas, "cta"),
+      socialCaptions: normalizeVariantList(draft.variants.socialCaptions, "caption"),
+      thumbnailTexts: normalizeVariantList(draft.variants.thumbnailTexts, "thumbnail"),
+    },
+    turns: normalizedTurns,
   };
 }
 
@@ -315,6 +676,7 @@ async function polishStructuredDraftWithOpenAI(
               "- Reduce repetitive sentence openings and AI-sounding transitions.",
               "- Shorten over-explained lines.",
               "- Preserve the hosts' personas and tension level.",
+              "- Keep the title, hook, CTA, caption, and thumbnail variants sharp and platform-ready.",
               "Return the same JSON shape.",
               `Draft JSON:\n${JSON.stringify(draft)}`,
             ].join("\n"),
@@ -340,6 +702,83 @@ async function polishStructuredDraftWithOpenAI(
               items: { type: "string" },
             },
             cta: { type: "string" },
+            variants: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                titles: {
+                  type: "array",
+                  minItems: 3,
+                  maxItems: 3,
+                  items: {
+                    type: "object",
+                    additionalProperties: false,
+                    properties: {
+                      style: { type: "string", enum: ["aggressive", "curiosity", "authority", "emotional", "practical"] },
+                      text: { type: "string" },
+                    },
+                    required: ["style", "text"],
+                  },
+                },
+                hookLines: {
+                  type: "array",
+                  minItems: 2,
+                  maxItems: 2,
+                  items: {
+                    type: "object",
+                    additionalProperties: false,
+                    properties: {
+                      style: { type: "string", enum: ["aggressive", "curiosity", "authority", "emotional", "practical"] },
+                      text: { type: "string" },
+                    },
+                    required: ["style", "text"],
+                  },
+                },
+                ctas: {
+                  type: "array",
+                  minItems: 2,
+                  maxItems: 2,
+                  items: {
+                    type: "object",
+                    additionalProperties: false,
+                    properties: {
+                      style: { type: "string", enum: ["aggressive", "curiosity", "authority", "emotional", "practical"] },
+                      text: { type: "string" },
+                    },
+                    required: ["style", "text"],
+                  },
+                },
+                socialCaptions: {
+                  type: "array",
+                  minItems: 5,
+                  maxItems: 5,
+                  items: {
+                    type: "object",
+                    additionalProperties: false,
+                    properties: {
+                      style: { type: "string", enum: ["aggressive", "curiosity", "authority", "emotional", "practical"] },
+                      text: { type: "string" },
+                    },
+                    required: ["style", "text"],
+                  },
+                },
+                thumbnailTexts: {
+                  type: "array",
+                  minItems: 3,
+                  maxItems: 3,
+                  items: {
+                    type: "object",
+                    additionalProperties: false,
+                    properties: {
+                      style: { type: "string", enum: ["aggressive", "curiosity", "authority", "emotional", "practical"] },
+                      text: { type: "string" },
+                    },
+                    required: ["style", "text"],
+                  },
+                },
+              },
+              required: ["titles", "hookLines", "ctas", "socialCaptions", "thumbnailTexts"],
+            },
             turns: {
               type: "array",
               minItems: 8,
@@ -352,15 +791,19 @@ async function polishStructuredDraftWithOpenAI(
                     type: "string",
                     enum: ["A", "B"],
                   },
+                  segment: {
+                    type: "string",
+                    enum: segmentBlueprint.map((segment) => segment.label),
+                  },
                   text: {
                     type: "string",
                   },
                 },
-                required: ["speaker", "text"],
+                required: ["speaker", "segment", "text"],
               },
             },
           },
-          required: ["title", "summary", "showNotes", "cta", "turns"],
+          required: ["title", "summary", "showNotes", "cta", "variants", "turns"],
         },
       },
     },
@@ -389,6 +832,172 @@ function buildCta(topic: string) {
   return `如果你也想做“${topic}”相关内容，先固定两位主持人的角色分工，再开始批量生成。`;
 }
 
+function buildEpisodeVariants(topic: string, summary: string, cta: string): EpisodeVariantBundle {
+  return {
+    titles: normalizeVariantList(
+      [
+        { style: "aggressive", text: `别再把“${topic}”讲成废话了` },
+        { style: "curiosity", text: `为什么“${topic}”越多人做，越少人讲明白？` },
+        { style: "authority", text: `关于“${topic}”，一套更能留住听众的讲法` },
+      ],
+      "title",
+    ),
+    hookLines: normalizeVariantList(
+      [
+        { style: "aggressive", text: `很多人以为“${topic}”的问题在工具，其实问题根本不在这。` },
+        { style: "curiosity", text: `如果“${topic}”真的有用，为什么大多数人做了还是没结果？` },
+      ],
+      "hook",
+    ),
+    ctas: normalizeVariantList(
+      [
+        { style: "practical", text: cta },
+        { style: "authority", text: `想把“${topic}”做成稳定栏目，先从固定结构和固定主持关系开始。` },
+      ],
+      "cta",
+    ),
+    socialCaptions: normalizeVariantList(
+      [
+        { style: "aggressive", text: `别把“${topic}”做成一堆顺滑废话，这集直接讲清楚问题到底卡在哪。` },
+        { style: "curiosity", text: `为什么看起来都在聊“${topic}”，真正能让人听完的内容却不多？` },
+        { style: "authority", text: `${summary} 这集给你一套更像节目、也更像内容产品的讲法。` },
+        { style: "emotional", text: `如果你也一直在“${topic}”上卡住，这集会帮你把焦虑拆成可执行的几步。` },
+        { style: "practical", text: `从选题、结构到主持分工，这集把“${topic}”怎么讲更容易留住听众一次讲透。` },
+      ],
+      "caption",
+    ),
+    thumbnailTexts: normalizeVariantList(
+      [
+        { style: "aggressive", text: `别再空聊${topic}` },
+        { style: "curiosity", text: `${topic}真问题` },
+        { style: "practical", text: `${topic}怎么讲` },
+      ],
+      "thumbnail",
+    ),
+  };
+}
+
+function buildEpisodeAnalytics(
+  input: CreateEpisodeInput,
+  hostA: VoiceProfile,
+  hostB: VoiceProfile,
+  script: ScriptTurn[],
+): EpisodeAnalytics {
+  return {
+    hostPair: `${hostA.name} + ${hostB.name}`,
+    conflictLevel: input.conflictLevel ?? "medium",
+    templateType: input.template,
+    numberOfClipLines: script.filter((turn) => turn.segment === "clip_line").length,
+    metrics: {
+      impressions: 0,
+      clicks: 0,
+      listens: 0,
+      completionRate: 0,
+      saves: 0,
+      shares: 0,
+    },
+  };
+}
+
+function inferClipTags(segment: ScriptSegmentLabel, text: string): EpisodeClipTag[] {
+  const tags = new Set<EpisodeClipTag>();
+
+  if (segment === "first_clash" || segment === "reality_check") {
+    tags.add("debate");
+  }
+
+  if (segment === "reframe" || segment === "final_takeaway" || segment === "clip_line") {
+    tags.add("insight");
+  }
+
+  if (/(但|问题是|真相|误区|等一下|会不会|该不该)/.test(text)) {
+    tags.add("controversial");
+  }
+
+  if (/(现实|执行|赚钱|变现|成本|用户|市场)/.test(text)) {
+    tags.add("practical");
+  }
+
+  if (/(害怕|焦虑|卡住|没结果|留不住|没人)/.test(text)) {
+    tags.add("emotional");
+  }
+
+  if (tags.size === 0) {
+    tags.add("insight");
+  }
+
+  return Array.from(tags).slice(0, 3);
+}
+
+function buildClipTitle(segment: ScriptSegmentLabel, text: string) {
+  const clean = clipify(text).replace(/[。！？!?]+$/g, "");
+
+  switch (segment) {
+    case "hook":
+      return `开场钩子：${clean}`;
+    case "first_clash":
+      return `第一次拉扯：${clean}`;
+    case "reality_check":
+      return `现实打脸：${clean}`;
+    case "concrete_example":
+      return `具体例子：${clean}`;
+    case "reframe":
+      return `观点翻转：${clean}`;
+    case "final_takeaway":
+      return `最终 takeaway：${clean}`;
+    case "clip_line":
+      return `收尾金句：${clean}`;
+    case "setup":
+    default:
+      return `选题切口：${clean}`;
+  }
+}
+
+function buildClipCaption(text: string, tags: EpisodeClipTag[]) {
+  return `${clipify(text)} #${tags.slice(0, 2).join(" #")}`;
+}
+
+function extractEpisodeClips(script: ScriptTurn[]): EpisodeClip[] {
+  const preferredSegments: ScriptSegmentLabel[] = [
+    "hook",
+    "first_clash",
+    "reality_check",
+    "concrete_example",
+    "reframe",
+    "final_takeaway",
+    "clip_line",
+  ];
+
+  return preferredSegments
+    .map((segment, index) => {
+      const turn = script.find((item) => item.segment === segment);
+
+      if (!turn) {
+        return undefined;
+      }
+
+      const tags = inferClipTags(segment, turn.text);
+
+      return {
+        id: `clip-${index + 1}`,
+        clipTitle: buildClipTitle(segment, turn.text),
+        hookLine: clipify(turn.text),
+        startSegment: segment,
+        endSegment: segment,
+        whyItWorks:
+          segment === "first_clash" || segment === "reality_check"
+            ? "这段有明确分歧，最容易在短视频里制造停留。"
+            : segment === "clip_line"
+              ? "这句足够短，适合直接做结尾切条。"
+              : "这段信息密度高，而且能单独成立，适合切成短内容。",
+        shortCaption: buildClipCaption(turn.text, tags),
+        tags,
+      } satisfies EpisodeClip;
+    })
+    .filter((clip): clip is EpisodeClip => Boolean(clip))
+    .slice(0, 7);
+}
+
 function buildEpisodeFromTurns(
   input: CreateEpisodeInput,
   hostA: VoiceProfile,
@@ -396,18 +1005,24 @@ function buildEpisodeFromTurns(
   topic: string,
   script: ScriptTurn[],
   generationMode: Episode["generationMode"],
+  topicScore?: TopicScore,
+  topicRewrites?: string[],
   title?: string,
   summary?: string,
   showNotes?: string[],
   cta?: string,
+  variants?: EpisodeVariantBundle,
 ): Episode {
+  const resolvedSummary = summary || buildShowAwareSummary(input, topic, input.sourceNotes);
+  const resolvedCta = cta || buildShowAwareCta(input, topic);
+
   return {
     id: makeEpisodeId(),
     title: title || buildTitle(topic, input.template),
     showName: input.showName.trim() || "Untitled Show",
-    summary: summary || buildShowAwareSummary(input, topic, input.sourceNotes),
+    summary: resolvedSummary,
     showNotes: showNotes || buildShowNotes(topic, input.sourceNotes),
-    cta: cta || buildShowAwareCta(input, topic),
+    cta: resolvedCta,
     sourceType: input.sourceNotes.trim() ? "article" : "topic",
     sourceContent: input.sourceNotes.trim() || topic,
     template: input.template,
@@ -421,6 +1036,19 @@ function buildEpisodeFromTurns(
       hour: "2-digit",
       minute: "2-digit",
     }),
+    topicScore,
+    topicRewrites,
+    clips: extractEpisodeClips(script),
+    variants: variants || buildEpisodeVariants(topic, resolvedSummary, resolvedCta),
+    analytics: buildEpisodeAnalytics(input, hostA, hostB, script),
+    appliedRecommendation:
+      input.recommendationId && input.recommendationTitle
+        ? {
+            id: input.recommendationId,
+            title: input.recommendationTitle,
+            appliedAt: new Date().toISOString(),
+          }
+        : undefined,
     hostA,
     hostB,
     script,
@@ -494,6 +1122,8 @@ async function generateStructuredScript(
               "Goal: create a 6-12 minute episode with clear pacing and listener-friendly flow.",
               "Constraints:",
               "- Return 8 to 12 dialogue turns.",
+              "- Use exactly these segment labels in order: hook, setup, first_clash, reality_check, concrete_example, reframe, final_takeaway, clip_line.",
+              "- Each segment should have 1 or 2 turns only.",
               "- Alternate speakers naturally, starting with A.",
               "- End with Host A delivering the final takeaway in one concise closing turn.",
               "- The opening should match the show's intro style and audience expectations.",
@@ -509,12 +1139,21 @@ async function generateStructuredScript(
               "- Respect each host's banned phrases and worldview biases.",
               `- Conflict intensity should match ${conflictLevelLabel(conflictLevel)}.`,
               "- Include at least one challenge, one concrete example, and one closing takeaway.",
+              "- Every 4 to 6 lines must include one challenge or disagreement.",
+              "- Host B must interrupt at least twice in medium or high conflict mode.",
+              "- At least 3 lines should feel short and clip-worthy.",
               "- Write spoken Chinese, not essay Chinese. Avoid polished article transitions.",
               "- Vary sentence length. Mix short interruptions with medium explanation lines.",
               "- At least one turn should feel like a natural interruption or sharp follow-up.",
               `- Pair dynamics: ${pairDynamics.dynamics}`,
               `- Pacing rule: ${pairDynamics.pacing}`,
               "- Provide 3 concise show notes bullets and 1 short CTA for the episode description.",
+              "- Also return distribution variants.",
+              "- Return exactly 3 title variants.",
+              "- Return exactly 2 intro hook variants.",
+              "- Return exactly 2 CTA variants.",
+              "- Return exactly 5 social caption variants.",
+              "- Return exactly 3 thumbnail text options.",
               `- ${templateInstruction}`,
             ].join("\n"),
           },
@@ -541,6 +1180,83 @@ async function generateStructuredScript(
               },
             },
             cta: { type: "string" },
+            variants: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                titles: {
+                  type: "array",
+                  minItems: 3,
+                  maxItems: 3,
+                  items: {
+                    type: "object",
+                    additionalProperties: false,
+                    properties: {
+                      style: { type: "string", enum: ["aggressive", "curiosity", "authority", "emotional", "practical"] },
+                      text: { type: "string" },
+                    },
+                    required: ["style", "text"],
+                  },
+                },
+                hookLines: {
+                  type: "array",
+                  minItems: 2,
+                  maxItems: 2,
+                  items: {
+                    type: "object",
+                    additionalProperties: false,
+                    properties: {
+                      style: { type: "string", enum: ["aggressive", "curiosity", "authority", "emotional", "practical"] },
+                      text: { type: "string" },
+                    },
+                    required: ["style", "text"],
+                  },
+                },
+                ctas: {
+                  type: "array",
+                  minItems: 2,
+                  maxItems: 2,
+                  items: {
+                    type: "object",
+                    additionalProperties: false,
+                    properties: {
+                      style: { type: "string", enum: ["aggressive", "curiosity", "authority", "emotional", "practical"] },
+                      text: { type: "string" },
+                    },
+                    required: ["style", "text"],
+                  },
+                },
+                socialCaptions: {
+                  type: "array",
+                  minItems: 5,
+                  maxItems: 5,
+                  items: {
+                    type: "object",
+                    additionalProperties: false,
+                    properties: {
+                      style: { type: "string", enum: ["aggressive", "curiosity", "authority", "emotional", "practical"] },
+                      text: { type: "string" },
+                    },
+                    required: ["style", "text"],
+                  },
+                },
+                thumbnailTexts: {
+                  type: "array",
+                  minItems: 3,
+                  maxItems: 3,
+                  items: {
+                    type: "object",
+                    additionalProperties: false,
+                    properties: {
+                      style: { type: "string", enum: ["aggressive", "curiosity", "authority", "emotional", "practical"] },
+                      text: { type: "string" },
+                    },
+                    required: ["style", "text"],
+                  },
+                },
+              },
+              required: ["titles", "hookLines", "ctas", "socialCaptions", "thumbnailTexts"],
+            },
             turns: {
               type: "array",
               minItems: 8,
@@ -553,15 +1269,19 @@ async function generateStructuredScript(
                     type: "string",
                     enum: ["A", "B"],
                   },
-                  text: {
-                    type: "string",
+                    segment: {
+                      type: "string",
+                      enum: segmentBlueprint.map((segment) => segment.label),
+                    },
+                    text: {
+                      type: "string",
+                    },
                   },
+                  required: ["speaker", "segment", "text"],
                 },
-                required: ["speaker", "text"],
               },
-            },
           },
-          required: ["title", "summary", "showNotes", "cta", "turns"],
+          required: ["title", "summary", "showNotes", "cta", "variants", "turns"],
         },
       },
     },
@@ -578,6 +1298,14 @@ export async function generateEpisodeFromInput(
 ): Promise<Episode> {
   const topic = normalizeTopic(input.topic, input.sourceNotes);
   const conflictLevel = input.conflictLevel ?? "medium";
+  const topicScoring =
+    input.approvedTopicScore
+      ? {
+          topicScore: input.approvedTopicScore,
+          rewrites: input.approvedTopicRewrites ?? [],
+          approved: input.approvedTopicScore.overallScore >= 75,
+        }
+      : await scoreTopicIdea(input);
 
   if (hasOpenAIKey()) {
     try {
@@ -589,9 +1317,11 @@ export async function generateEpisodeFromInput(
               () => locallyPolished,
             )
           : locallyPolished;
-      const script = polished.turns.map((turn, index) =>
-        makeTurn(index + 1, turn.speaker, turn.text.trim()),
-      );
+      const normalizedDraft = normalizeSegmentedDraft(polished, conflictLevel);
+      const script = normalizedDraft.turns.map((turn, index) => ({
+        ...makeTurn(index + 1, turn.speaker, turn.text.trim()),
+        segment: turn.segment,
+      }));
 
       return buildEpisodeFromTurns(
         input,
@@ -600,10 +1330,13 @@ export async function generateEpisodeFromInput(
         topic,
         script,
         "openai",
-        polished.title.trim(),
-        polished.summary.trim(),
-        polished.showNotes.map((note) => note.trim()),
-        polished.cta.trim(),
+        topicScoring.topicScore,
+        topicScoring.rewrites,
+        normalizedDraft.title.trim(),
+        normalizedDraft.summary.trim(),
+        normalizedDraft.showNotes.map((note) => note.trim()),
+        normalizedDraft.cta.trim(),
+        normalizedDraft.variants,
       );
     } catch (error) {
       console.error("OpenAI script generation failed, falling back to local generator.", error);
@@ -615,7 +1348,12 @@ export async function generateEpisodeFromInput(
     summary: buildSummary(topic, input.sourceNotes),
     showNotes: buildShowNotes(topic, input.sourceNotes),
     cta: buildCta(topic),
-    turns: buildScript(
+    variants: buildEpisodeVariants(
+      topic,
+      buildSummary(topic, input.sourceNotes),
+      buildCta(topic),
+    ),
+    turns: attachFallbackSegments(buildScript(
       topic,
       input.sourceNotes,
       hostA,
@@ -626,12 +1364,16 @@ export async function generateEpisodeFromInput(
     ).map((turn) => ({
       speaker: turn.speaker,
       text: turn.text,
-    })),
+    }))),
   } satisfies StructuredEpisodeDraft;
-  const polishedFallback = polishStructuredDraftLocally(fallbackDraft);
-  const fallbackScript = polishedFallback.turns.map((turn, index) =>
-    makeTurn(index + 1, turn.speaker, turn.text),
+  const polishedFallback = normalizeSegmentedDraft(
+    polishStructuredDraftLocally(fallbackDraft),
+    conflictLevel,
   );
+  const fallbackScript = polishedFallback.turns.map((turn, index) => ({
+    ...makeTurn(index + 1, turn.speaker, turn.text),
+    segment: turn.segment,
+  }));
 
   return buildEpisodeFromTurns(
     input,
@@ -640,9 +1382,12 @@ export async function generateEpisodeFromInput(
     topic,
     fallbackScript,
     "fallback",
+    topicScoring.topicScore,
+    topicScoring.rewrites,
     polishedFallback.title,
     polishedFallback.summary,
     polishedFallback.showNotes,
     polishedFallback.cta,
+    polishedFallback.variants,
   );
 }

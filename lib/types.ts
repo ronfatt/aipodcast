@@ -19,6 +19,15 @@ export type PersonaMode =
 
 export type ConflictLevel = "low" | "medium" | "high";
 export type BackgroundMusicLevel = "subtle" | "balanced" | "forward";
+export type ScriptSegmentLabel =
+  | "hook"
+  | "setup"
+  | "first_clash"
+  | "reality_check"
+  | "concrete_example"
+  | "reframe"
+  | "final_takeaway"
+  | "clip_line";
 
 export type ShowProfile = {
   id: string;
@@ -71,7 +80,100 @@ export type VoiceProfile = {
 export type ScriptTurn = {
   id: string;
   speaker: "A" | "B";
+  segment?: ScriptSegmentLabel;
   text: string;
+};
+
+export type TopicScore = {
+  controversyScore: number;
+  relevanceScore: number;
+  audiencePainScore: number;
+  clipabilityScore: number;
+  monetizationScore: number;
+  hookScore: number;
+  overallScore: number;
+  rationale: string;
+};
+
+export type EpisodeClipTag =
+  | "debate"
+  | "insight"
+  | "controversial"
+  | "emotional"
+  | "practical";
+
+export type EpisodeVariantStyle =
+  | "aggressive"
+  | "curiosity"
+  | "authority"
+  | "emotional"
+  | "practical";
+
+export type PublishingPlatform =
+  | "spotify"
+  | "apple-podcasts"
+  | "xiaoyuzhou"
+  | "youtube"
+  | "rss"
+  | "other";
+
+export type EpisodeClip = {
+  id: string;
+  clipTitle: string;
+  hookLine: string;
+  startSegment: ScriptSegmentLabel;
+  endSegment: ScriptSegmentLabel;
+  whyItWorks: string;
+  shortCaption: string;
+  tags: EpisodeClipTag[];
+};
+
+export type EpisodeTextVariant = {
+  id: string;
+  style: EpisodeVariantStyle;
+  text: string;
+};
+
+export type EpisodeVariantBundle = {
+  titles: EpisodeTextVariant[];
+  hookLines: EpisodeTextVariant[];
+  ctas: EpisodeTextVariant[];
+  socialCaptions: EpisodeTextVariant[];
+  thumbnailTexts: EpisodeTextVariant[];
+};
+
+export type EpisodeAnalytics = {
+  hostPair: string;
+  conflictLevel: ConflictLevel;
+  templateType: string;
+  numberOfClipLines: number;
+  publishingPlatform?: PublishingPlatform;
+  selectedTitleStyle?: EpisodeVariantStyle;
+  metrics: {
+    impressions: number;
+    clicks: number;
+    listens: number;
+    completionRate: number;
+    saves: number;
+    shares: number;
+    bestPerformingClipId?: string;
+  };
+};
+
+export type OptimizationRecommendation = {
+  id: string;
+  title: string;
+  rationale: string;
+  action: string;
+  priority: "high" | "medium" | "low";
+  actionLabel?: string;
+  actionHref?: string;
+};
+
+export type AppliedRecommendation = {
+  id: string;
+  title: string;
+  appliedAt: string;
 };
 
 export type HostEpisodeMemory = {
@@ -100,6 +202,12 @@ export type Episode = {
   durationLabel: string;
   status: EpisodeStatus;
   updatedAt: string;
+  topicScore?: TopicScore;
+  topicRewrites?: string[];
+  clips?: EpisodeClip[];
+  variants?: EpisodeVariantBundle;
+  analytics?: EpisodeAnalytics;
+  appliedRecommendation?: AppliedRecommendation;
   hostA: VoiceProfile;
   hostB: VoiceProfile;
   script: ScriptTurn[];
@@ -112,6 +220,8 @@ export type CreateEpisodeInput = {
   showName: string;
   showId?: string;
   showProfileId?: string;
+  recommendationId?: string;
+  recommendationTitle?: string;
   showTagline?: string;
   showCoverImageUrl?: string;
   targetAudience?: string;
@@ -128,6 +238,8 @@ export type CreateEpisodeInput = {
   hostBId: string;
   personaMode?: PersonaMode;
   conflictLevel?: ConflictLevel;
+  approvedTopicScore?: TopicScore;
+  approvedTopicRewrites?: string[];
 };
 
 export type CreateShowInput = Omit<ShowProfile, "id">;
@@ -136,10 +248,30 @@ export type CreateEpisodesRequest = CreateEpisodeInput & {
   batchTopics?: string[];
 };
 
+export type TopicScoringResult = {
+  topicScore: TopicScore;
+  rewrites: string[];
+  approved: boolean;
+};
+
 export type UpdateEpisodeInput = {
   title: string;
   summary: string;
   showNotes: string[];
   cta: string;
   script: ScriptTurn[];
+};
+
+export type UpdateEpisodeAnalyticsInput = {
+  publishingPlatform?: PublishingPlatform;
+  selectedTitleStyle?: EpisodeVariantStyle;
+  metrics: {
+    impressions: number;
+    clicks: number;
+    listens: number;
+    completionRate: number;
+    saves: number;
+    shares: number;
+    bestPerformingClipId?: string;
+  };
 };

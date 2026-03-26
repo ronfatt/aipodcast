@@ -154,7 +154,7 @@ export function EpisodeEditor({ episode }: { episode: Episode }) {
       <div className="mt-6 space-y-4">
         {script.map((turn, index) => (
           <label key={turn.id} className="grid gap-2 text-sm text-ink/70">
-            Host {turn.speaker}
+            Host {turn.speaker}{turn.segment ? ` · ${turn.segment.replace(/_/g, " ")}` : ""}
             <textarea
               rows={3}
               value={turn.text}

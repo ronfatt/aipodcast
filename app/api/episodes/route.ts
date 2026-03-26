@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth-server";
 import { createEpisode } from "@/lib/episode-store";
+import { scoreTopicIdea } from "@/lib/script-generator";
 import { CreateEpisodeInput, CreateEpisodesRequest } from "@/lib/types";
 
 function badRequest(message: string) {
@@ -23,6 +24,8 @@ export async function POST(request: Request) {
     showId: body.showId?.trim() || undefined,
     showName: body.showName?.trim() || "Future Banter",
     showProfileId: body.showProfileId?.trim() || undefined,
+    recommendationId: body.recommendationId?.trim() || undefined,
+    recommendationTitle: body.recommendationTitle?.trim() || undefined,
     showTagline: body.showTagline?.trim() || undefined,
     showCoverImageUrl: body.showCoverImageUrl?.trim() || undefined,
     targetAudience: body.targetAudience?.trim() || undefined,
@@ -53,10 +56,28 @@ export async function POST(request: Request) {
   const createdEpisodes = [];
 
   for (const topic of topicsToCreate) {
+    const topicInput = {
+      ...baseInput,
+      topic,
+    } satisfies CreateEpisodeInput;
+    const topicScoring = await scoreTopicIdea(topicInput);
+
+    if (topicScoring.topicScore.overallScore < 75) {
+      return NextResponse.json(
+        {
+          error: "Topic score is too low to generate directly.",
+          topicScore: topicScoring.topicScore,
+          rewrites: topicScoring.rewrites,
+        },
+        { status: 422 },
+      );
+    }
+
     const episode = await createEpisode(
       {
-        ...baseInput,
-        topic,
+        ...topicInput,
+        approvedTopicScore: topicScoring.topicScore,
+        approvedTopicRewrites: topicScoring.rewrites,
       },
       user?.id,
     );

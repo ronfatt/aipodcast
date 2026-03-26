@@ -2,11 +2,17 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AudioRenderPanel } from "@/components/audio-render-panel";
 import { AppShell } from "@/components/app-shell";
+import { ClipDistributionPanel } from "@/components/clip-distribution-panel";
+import { ClipPackagePanel } from "@/components/clip-package-panel";
+import { DistributionVariantsPanel } from "@/components/distribution-variants-panel";
+import { EpisodeAnalyticsPanel } from "@/components/episode-analytics-panel";
 import { EpisodeEditor } from "@/components/episode-editor";
 import { ExportPackagePanel } from "@/components/export-package-panel";
+import { OptimizationRecommendationsPanel } from "@/components/optimization-recommendations-panel";
 import { ScriptPreview } from "@/components/script-preview";
 import { requireUser } from "@/lib/auth-server";
 import { getEpisodeById } from "@/lib/episode-store";
+import { buildEpisodeRecommendations } from "@/lib/optimization-recommender";
 import { inferPersonaMode, personaModeLabel, roleLabel } from "@/lib/personas";
 import { getShowById, listShows } from "@/lib/show-store";
 
@@ -27,6 +33,7 @@ export default async function EpisodeDetailPage({
   const showProfile =
     (episode.showId ? await getShowById(episode.showId, user?.id) : undefined) ||
     (await listShows(user?.id)).find((show) => show.name === episode.showName);
+  const recommendations = buildEpisodeRecommendations(episode);
 
   return (
     <AppShell title={episode.title} kicker="Script Editor">
@@ -58,6 +65,12 @@ export default async function EpisodeDetailPage({
               <dt className="text-ink/45">Persona mode</dt>
               <dd className="mt-1 text-base text-ink">{personaModeLabel(personaMode)}</dd>
             </div>
+            {episode.topicScore ? (
+              <div>
+                <dt className="text-ink/45">Topic score</dt>
+                <dd className="mt-1 text-base text-ink">{episode.topicScore.overallScore}</dd>
+              </div>
+            ) : null}
             {showProfile ? (
               <>
                 <div>
@@ -74,6 +87,12 @@ export default async function EpisodeDetailPage({
               <dt className="text-ink/45">Generation mode</dt>
               <dd className="mt-1 text-base text-ink">{episode.generationMode ?? "fallback"}</dd>
             </div>
+            {episode.appliedRecommendation ? (
+              <div>
+                <dt className="text-ink/45">Applied recommendation</dt>
+                <dd className="mt-1 text-base text-ink">{episode.appliedRecommendation.title}</dd>
+              </div>
+            ) : null}
           </dl>
           <Link
             href="/episodes/new"
@@ -106,6 +125,36 @@ export default async function EpisodeDetailPage({
               <p className="mt-2">Audience: {showProfile.audience}</p>
             </div>
           ) : null}
+          {episode.topicScore ? (
+            <div className="mt-4 rounded-[1.5rem] border border-dashed border-coral/20 bg-coral/5 p-4 text-sm leading-6 text-ink/70">
+              <p className="text-xs uppercase tracking-[0.25em] text-coral">Topic Score</p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <p>Overall: {episode.topicScore.overallScore}</p>
+                <p>Controversy: {episode.topicScore.controversyScore}</p>
+                <p>Pain: {episode.topicScore.audiencePainScore}</p>
+                <p>Clipability: {episode.topicScore.clipabilityScore}</p>
+                <p>Monetization: {episode.topicScore.monetizationScore}</p>
+                <p>Hook: {episode.topicScore.hookScore}</p>
+              </div>
+              <p className="mt-3">{episode.topicScore.rationale}</p>
+              {episode.topicRewrites?.length ? (
+                <div className="mt-3 space-y-2">
+                  {episode.topicRewrites.map((rewrite) => (
+                    <p key={rewrite}>{rewrite}</p>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+          {episode.appliedRecommendation ? (
+            <div className="mt-4 rounded-[1.5rem] border border-dashed border-teal/20 bg-teal/5 p-4 text-sm leading-6 text-ink/70">
+              <p className="text-xs uppercase tracking-[0.25em] text-teal">Recommendation Lineage</p>
+              <p className="mt-2">{episode.appliedRecommendation.title}</p>
+              <p className="mt-2 text-xs uppercase tracking-[0.2em] text-ink/45">
+                Applied at {episode.appliedRecommendation.appliedAt}
+              </p>
+            </div>
+          ) : null}
           <div className="mt-6">
             <ScriptPreview turns={episode.script} />
           </div>
@@ -133,6 +182,15 @@ export default async function EpisodeDetailPage({
               </div>
             ) : null}
           </div>
+          {episode.clips?.length ? (
+            <ClipDistributionPanel episodeTitle={episode.title} clips={episode.clips} />
+          ) : null}
+          {episode.variants ? <DistributionVariantsPanel variants={episode.variants} /> : null}
+          <EpisodeAnalyticsPanel episode={episode} />
+          <OptimizationRecommendationsPanel
+            title="What to strengthen next"
+            recommendations={recommendations}
+          />
         </main>
 
         <aside className="panel rounded-[2rem] p-6">
@@ -169,6 +227,7 @@ export default async function EpisodeDetailPage({
             episodeId={episode.id}
             exportPackageUrl={episode.exportPackageUrl}
           />
+          {episode.clips?.length ? <ClipPackagePanel episodeId={episode.id} /> : null}
         </aside>
       </section>
     </AppShell>

@@ -30,6 +30,9 @@ export function EpisodeCard({ episode }: { episode: Episode }) {
         <span>{generationMode}</span>
         <span>{personaModeLabel(personaMode)}</span>
         <span>{episode.template}</span>
+        {episode.appliedRecommendation ? <span>via {episode.appliedRecommendation.id}</span> : null}
+        {episode.analytics?.publishingPlatform ? <span>{episode.analytics.publishingPlatform}</span> : null}
+        {episode.analytics?.metrics.listens ? <span>{episode.analytics.metrics.listens} listens</span> : null}
         <span>{episode.hostA.name}</span>
         <span>{episode.hostB.name}</span>
         <span>{episode.updatedAt}</span>
